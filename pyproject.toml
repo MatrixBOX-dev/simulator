@@ -1,0 +1,29 @@
+[project]
+name = "matrixbox-simulator"
+version = "0.1.0"
+description = "A desktop simulator and terminal visualizer for matrixbox apps"
+license = "MIT"
+authors = [
+  { name = "Simon Sawert", email = "simon@sawert.se" }
+]
+requires-python = ">=3.11"
+dependencies = ["pillow>=11.0", "rich>=13", "websocket-client>=1.8"]
+
+[project.scripts]
+matrixbox = "matrixbox_simulator.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["matrixbox_simulator"]
+
+[dependency-groups]
+dev = ["ruff>=0.14", "ty>=0.0.1a0", "uv>=0.12"]
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
