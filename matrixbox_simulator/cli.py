@@ -1,8 +1,9 @@
-"""Single `matrixbox` entrypoint, with `app` and `simulator` as subcommands."""
+"""Single `matrixbox` entrypoint, with `app`, `simulator`, and `screenshot`
+as subcommands."""
 
 import argparse
 
-from matrixbox_simulator.device import run_app
+from matrixbox_simulator.device import run_app, run_screenshot
 from matrixbox_simulator.term import run_simulator
 
 
@@ -24,12 +25,23 @@ def main() -> None:
             description=run_simulator.__doc__,
         )
     )
+    run_screenshot.build_parser(
+        subparsers.add_parser(
+            "screenshot",
+            help="boot an app headlessly and save one rendered frame to a PNG",
+            description=run_screenshot.__doc__,
+        )
+    )
 
     args = parser.parse_args()
     if args.command == "app":
         run_app.run(args)
-    else:
+    elif args.command == "screenshot":
+        run_screenshot.run(args)
+    elif args.command == "simulator":
         run_simulator.run(args)
+    else:
+        raise AssertionError(f"unhandled command: {args.command!r}")
 
 
 if __name__ == "__main__":

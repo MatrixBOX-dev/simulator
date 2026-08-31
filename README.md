@@ -237,6 +237,31 @@ full brightness would be blinding in person; a color that's already
 it. Start around 5.0 for a similarly low "should read as white" value
 and adjust live with `[`/`]` for anything not listed.
 
+## Screenshots
+
+For CI, PR previews, or anywhere else a terminal isn't available:
+
+```sh
+uv run matrixbox screenshot clock -o clock.png
+```
+
+Boots one app headlessly (no terminal, no button listener), waits for it
+to draw, writes the result to a PNG, and exits — no second terminal or
+`--connect` needed. `--settings <name>` seeds it with a settings file
+before boot, resolved inside the app's own directory (e.g. `--settings
+ci.json` for `apps/clock/ci.json`); omit it to boot with plain defaults.
+Always starts from a clean, reset state, regardless of whatever an
+earlier `uv run matrixbox app` run against the same app may have saved.
+
+By default it captures as soon as one frame is drawn, waiting up to 5
+seconds; `--after-frames <n>` and `--timeout <seconds>` adjust both,
+whichever is reached first. An app that never draws in time, or raises
+while starting up, exits non-zero with the error printed, so a CI job
+fails loudly instead of shipping a blank or stale image. `--scale <n>`
+sets the output PNG's pixel scale factor (default 8, so a 128x32 panel
+becomes a 1024x256 image). `--size` / `--width` / `--height` pick the
+panel size, same as `matrixbox app` (see "Panel sizes" above).
+
 ## Useful flags
 
 `uv run matrixbox app`: `--size` or `--width` / `--height` for panel
@@ -247,6 +272,8 @@ and start fresh, `--refresh-fps` / `--gamma` (see above).
 `uv run matrixbox simulator`: `--connect <url>` (omit for demo mode),
 `--device` or `--width` / `--height` for the demo/placeholder size (see
 "Panel sizes" above), `--fps` (demo mode only).
+
+`uv run matrixbox screenshot`: see "Screenshots" above.
 
 ## Limitations
 
