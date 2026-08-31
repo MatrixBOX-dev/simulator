@@ -90,14 +90,47 @@ def build_parser(
     return parser
 
 
+def _warn_if_settings_filename_looks_unused(app_dir: Path, settings_src: Path) -> None:
+    # --settings is staged under its own filename (see _stage_for_screenshot),
+    # so it only ever gets read if the app's own code happens to open that
+    # exact name — a real, common per-app naming convention (departures
+    # wants "settings.txt", clock wants "clocksettings.txt", ...) that this
+    # tool has no way to look up ahead of time. A quick grep across the
+    # app's own source is a cheap, if imperfect, way to catch the likely
+    # mistake — an app that never mentions the given filename anywhere is
+    # not going to read it, no matter what it contains.
+    name = settings_src.name
+    for py_file in app_dir.rglob("*.py"):
+        try:
+            if name in py_file.read_text(errors="ignore"):
+                return
+        except OSError:
+            continue
+
+    print(
+        f"matrixbox-simulator: warning: {app_dir.name}'s own code doesn't "
+        f"appear to reference {name!r} anywhere — it likely reads its "
+        "settings from a differently-named file (e.g. settings.txt, "
+        "clocksettings.txt, <appname>settings.txt, ...); if so, this seed "
+        "file has no effect. Check the app's own source for the exact "
+        "filename it opens, and rename --settings to match.",
+        file=sys.stderr,
+    )
+
+
 def _stage_for_screenshot(
     app_dir: Path,
     framework_root: Path,
     settings_src: Path | None,
     args: argparse.Namespace,
 ) -> tuple[str, Path]:
-    """Stages `app_dir` fresh (whichever kernel style it uses) and seeds its
-    settings.txt, either from `settings_src` or plain defaults. Returns the
+    """Stages `app_dir` fresh (whichever kernel style it uses). If given,
+    `settings_src` is copied verbatim into the app's own staged directory
+    under its original filename — apps keep their own settings file there
+    (e.g. departures' `settings.txt`, clock's `clocksettings.txt`), a
+    plain relative-path file read straight off the app's own cwd, distinct
+    from the device-root /settings.txt this also seeds with plain
+    width/height/tiles defaults (see run_app._seed_settings). Returns the
     exec-ready (source, path) for the app's own entry point, ready for
     `run_app._exec_as_main`. Mirrors run_app's own
     _run_main_kernel/_run_package_kernel split, minus everything that's
@@ -123,9 +156,16 @@ def _stage_monolithic_app_for_screenshot(
     run_app._install_chdir_path_tracking()
     run_app._install_lenient_bytes_import_hook(staged_root)
 
-    settings_path = staged_root / "settings.txt"
     if settings_src is not None:
-        settings_path.write_text(settings_src.read_text())
+        # Seeded into the app's own *unflattened* apps/<name> copy, not
+        # wherever it ends up at runtime: the kernel only flattens apps/
+        # to a top-level sibling when it actually boots one (main.py's
+        # own initialize_app, not this staging step), copying that app's
+        # whole directory — extra files included, same as clock's own
+        # code.py reading a sibling clock.html — so seeding here rides
+        # along with that copy.
+        unflattened_app_dir = staged_root / "apps" / app_dir.name
+        (unflattened_app_dir / settings_src.name).write_text(settings_src.read_text())
 
     run_app._seed_monolithic_settings(
         staged_root,
@@ -159,16 +199,20 @@ def _stage_package_app_for_screenshot(
     staged_app_dir = run_app._stage_app(app_dir, reset=True)
     run_app._install_path_sandbox(run_app.SANDBOX_ROOT)
 
-    # SANDBOX_ROOT (not staged_app_dir) is where a package-kernel app's
+    if settings_src is not None:
+        # The app's own settings file, seeded straight into its staged
+        # directory under its original filename — a plain relative-path
+        # file the app reads off its own cwd, distinct from the
+        # device-root /settings.txt below (width/height/tiles only).
+        (staged_app_dir / settings_src.name).write_text(settings_src.read_text())
+
+    # SANDBOX_ROOT (not staged_app_dir) is where the device-root
     # settings.txt actually lives, matching real hardware's single
     # flash-root settings file — see run_app._seed_settings. reset=True on
     # _stage_app above only wipes this app's own staged code, so drop any
     # leftover settings.txt from an earlier, unrelated run by hand:
     # screenshot mode always starts from a clean, known state.
-    settings_path = run_app.SANDBOX_ROOT / "settings.txt"
-    settings_path.unlink(missing_ok=True)
-    if settings_src is not None:
-        settings_path.write_text(settings_src.read_text())
+    (run_app.SANDBOX_ROOT / "settings.txt").unlink(missing_ok=True)
 
     run_app._seed_settings(
         args.width,
@@ -225,6 +269,14 @@ def run(args: argparse.Namespace) -> None:
 
     os.environ["MATRIXBOX_SIMULATOR_REFRESH_FPS"] = str(args.refresh_fps)
     os.environ["MATRIXBOX_SIMULATOR_GAMMA"] = str(args.gamma)
+    # A monolithic-kernel app's main.py stands up its own web UI on this
+    # port (remapped from the device's real port 80 — see socketpool.py).
+    # Nothing external ever needs to reach it in headless screenshot mode,
+    # so let the OS pick a free one instead of the fixed 8080 default,
+    # which would otherwise collide with any other already-running
+    # `matrixbox app`/`screenshot` process on the same machine — same
+    # reasoning as the frame server's port 0 below.
+    os.environ["MATRIXBOX_SIMULATOR_HTTP_PORT"] = "0"
 
     app_dir = run_app._resolve_app_dir(args.app)
     framework_root = run_app._framework_root_for(app_dir)
@@ -247,6 +299,8 @@ def run(args: argparse.Namespace) -> None:
             json.loads(settings_src.read_text())
         except (OSError, ValueError) as exc:
             raise SystemExit(f"invalid settings file {settings_src}: {exc}") from exc
+
+        _warn_if_settings_filename_looks_unused(app_dir, settings_src)
 
     # Resolved against the real launch directory, before staging below
     # os.chdir()s into the sandbox — a relative --output would otherwise

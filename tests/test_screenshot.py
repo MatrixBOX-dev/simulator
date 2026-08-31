@@ -20,15 +20,25 @@ import displayio
 import framebufferio
 import rgbmatrix
 
+# /settings.txt (absolute, device-root) carries panel geometry; a plain
+# relative open() is this app's own settings file, living in its own
+# staged directory — the two are unrelated, same as departures' own
+# settings.txt (relative) vs. its wifi lookup at /settings.txt (absolute).
 try:
     with open("/settings.txt") as f:
-        settings = json.loads(f.read())
+        device_settings = json.loads(f.read())
 except OSError:
-    settings = {}
+    device_settings = {}
 
-width = settings.get("width", 64)
-height = settings.get("height", 32)
-color = 0x00FF00 if settings.get("theme") == "green" else 0xFF0000
+try:
+    with open("app-settings.json") as f:
+        app_settings = json.loads(f.read())
+except OSError:
+    app_settings = {}
+
+width = device_settings.get("width", 64)
+height = device_settings.get("height", 32)
+color = 0x00FF00 if app_settings.get("theme") == "green" else 0xFF0000
 
 matrix = rgbmatrix.RGBMatrix(width=width, height=height)
 display = framebufferio.FramebufferDisplay(matrix)
@@ -119,15 +129,24 @@ def test_captures_a_drawn_frame_with_default_settings(tmp_path: Path) -> None:
     assert image.getpixel((0, 0)) == (255, 0, 0)  # no --settings: app's own default
 
 
-def test_settings_file_is_resolved_inside_the_app_directory(tmp_path: Path) -> None:
+def test_settings_file_is_seeded_into_the_apps_own_staged_directory(
+    tmp_path: Path,
+) -> None:
+    # Named to match what the fixture app itself opens (a plain relative
+    # "app-settings.json") — --settings copies the given file verbatim
+    # into the app's own staged directory under its original name, it
+    # doesn't merge it into the device-root settings.txt.
     app_dir = _make_app(tmp_path, "solid", _SOLID_FRAME_APP)
-    (app_dir / "ci.json").write_text(json.dumps({"theme": "green"}))
+    (app_dir / "app-settings.json").write_text(json.dumps({"theme": "green"}))
     output = tmp_path / "out.png"
 
-    result = _run_screenshot(str(app_dir), "--settings", "ci.json", "-o", str(output))
+    result = _run_screenshot(
+        str(app_dir), "--settings", "app-settings.json", "-o", str(output)
+    )
 
     assert result.returncode == 0, result.stderr
     assert Image.open(output).getpixel((0, 0)) == (0, 255, 0)
+    assert "doesn't appear to reference" not in result.stderr
 
 
 def test_missing_settings_file_fails_fast(tmp_path: Path) -> None:
