@@ -9,6 +9,7 @@ real hardware would never send this.
 import struct
 import sys
 import time
+from collections.abc import Callable
 
 try:
     import resource
@@ -39,6 +40,11 @@ class FrameBridge:
         self._last_broadcast_time: float | None = None
         self._last_rgb: bytes | None = None
         self._smoothed_interval: float | None = None
+
+        # Set by headless callers (screenshot mode) that need a composited
+        # frame directly, without standing up a real renderer to decode it
+        # back off the wire.
+        self.on_publish: Callable[[int, int, bytes], None] | None = None
 
     def start(self, host: str = "127.0.0.1", port: int = 9191) -> wsserver.FrameServer:
         if self._server is None:
@@ -96,6 +102,9 @@ class FrameBridge:
 
         header = struct.pack("<BBHHBB", 0xF3, 1, width, height, 0, self._tiles)
         self._server.broadcast(header + bytes(rgb), kind="frame")
+
+        if self.on_publish is not None:
+            self.on_publish(width, height, rgb)
 
         self._publish_stats()
 
