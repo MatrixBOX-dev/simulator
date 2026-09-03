@@ -247,9 +247,21 @@ uv run matrixbox screenshot clock -o clock.png
 
 Boots one app headlessly (no terminal, no button listener), waits for it
 to draw, writes the result to a PNG, and exits — no second terminal or
-`--connect` needed. `--settings <name>` seeds it with a settings file
-before boot, resolved inside the app's own directory (e.g. `--settings
-ci.json` for `apps/clock/ci.json`); omit it to boot with plain defaults.
+`--connect` needed. `--settings <path>` seeds it with a settings file
+before boot: a bare filename is resolved inside the app's own directory
+(e.g. `--settings ci.json` for `apps/clock/ci.json`), anything else (e.g.
+`~/tmp/settings-one.txt`) is used as given; omit it to boot with plain
+defaults. It's staged under its own filename unless `--rename-settings
+<name>` says otherwise — handy for keeping several seed files around
+(e.g. `settings-one.txt`, `settings-two.txt`) that each need to land as
+the one filename the app actually reads (e.g. `settings.txt`), to
+screenshot an app under a few different configurations in a row:
+
+```sh
+uv run matrixbox screenshot apps/departures --settings settings-one.txt --rename-settings settings.txt -o one.png
+uv run matrixbox screenshot apps/departures --settings settings-two.txt --rename-settings settings.txt -o two.png
+```
+
 Always starts from a clean, reset state, regardless of whatever an
 earlier `uv run matrixbox app` run against the same app may have saved.
 

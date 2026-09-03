@@ -45,10 +45,21 @@ def build_parser(
         "--settings",
         default=None,
         help=(
-            "name of a settings file to seed with, resolved inside the "
-            "app's own directory (e.g. --settings ci.json for "
-            "<app>/ci.json). Optional: omitted, the app boots with plain "
-            "defaults"
+            "settings file to seed with: a bare filename (e.g. ci.json) is "
+            "resolved inside the app's own directory, anything else (e.g. "
+            "~/tmp/settings-one.txt) is used as given. Staged under its "
+            "own filename unless --rename-settings says otherwise. Optional: "
+            "omitted, the app boots with plain defaults"
+        ),
+    )
+    parser.add_argument(
+        "--rename-settings",
+        default=None,
+        help=(
+            "filename to stage --settings under instead of its own name — "
+            "for keeping several named seed files around (e.g. "
+            "settings-one.txt, settings-two.txt) that each need to land as "
+            "the one filename the app actually reads (e.g. settings.txt)"
         ),
     )
     parser.add_argument(
@@ -90,16 +101,35 @@ def build_parser(
     return parser
 
 
-def _warn_if_settings_filename_looks_unused(app_dir: Path, settings_src: Path) -> None:
-    # --settings is staged under its own filename (see _stage_for_screenshot),
-    # so it only ever gets read if the app's own code happens to open that
-    # exact name — a real, common per-app naming convention (departures
-    # wants "settings.txt", clock wants "clocksettings.txt", ...) that this
-    # tool has no way to look up ahead of time. A quick grep across the
-    # app's own source is a cheap, if imperfect, way to catch the likely
-    # mistake — an app that never mentions the given filename anywhere is
-    # not going to read it, no matter what it contains.
-    name = settings_src.name
+def _resolve_settings_src(settings_arg: str, app_dir: Path) -> Path:
+    # A bare filename (the common case, e.g. "ci.json") resolves inside the
+    # app's own directory, same as before. Anything else — an absolute
+    # path, or one with a directory component like "~/tmp/settings.txt" —
+    # is used as given, so seed files for a single app can live wherever's
+    # convenient instead of all crowding that app's own directory.
+    given = Path(settings_arg).expanduser()
+    if given.is_file():
+        return given.resolve()
+
+    by_name = app_dir / settings_arg
+    if by_name.is_file():
+        return by_name
+
+    raise SystemExit(f"no such settings file: {given}")
+
+
+def _warn_if_settings_filename_looks_unused(
+    app_dir: Path, settings_src: Path, staged_name: str
+) -> None:
+    # A settings file is only ever read if the app's own code happens to
+    # open the exact name it's staged under (see _stage_for_screenshot) — a
+    # real, common per-app naming convention (departures wants
+    # "settings.txt", clock wants "clocksettings.txt", ...) that this tool
+    # has no way to look up ahead of time. A quick grep across the app's
+    # own source is a cheap, if imperfect, way to catch the likely mistake
+    # — an app that never mentions the staged filename anywhere is not
+    # going to read it, no matter what it contains.
+    name = staged_name
     for py_file in app_dir.rglob("*.py"):
         try:
             if name in py_file.read_text(errors="ignore"):
@@ -113,7 +143,7 @@ def _warn_if_settings_filename_looks_unused(app_dir: Path, settings_src: Path) -
         "settings from a differently-named file (e.g. settings.txt, "
         "clocksettings.txt, <appname>settings.txt, ...); if so, this seed "
         "file has no effect. Check the app's own source for the exact "
-        "filename it opens, and rename --settings to match.",
+        "filename it opens, and pass it via --rename-settings.",
         file=sys.stderr,
     )
 
@@ -122,14 +152,16 @@ def _stage_for_screenshot(
     app_dir: Path,
     framework_root: Path,
     settings_src: Path | None,
+    staged_name: str | None,
     args: argparse.Namespace,
 ) -> tuple[str, Path]:
     """Stages `app_dir` fresh (whichever kernel style it uses). If given,
     `settings_src` is copied verbatim into the app's own staged directory
-    under its original filename — apps keep their own settings file there
-    (e.g. departures' `settings.txt`, clock's `clocksettings.txt`), a
-    plain relative-path file read straight off the app's own cwd, distinct
-    from the device-root /settings.txt this also seeds with plain
+    under `staged_name` (its own filename, unless --rename-settings
+    overrides it) — apps keep their own settings file there (e.g.
+    departures' `settings.txt`, clock's `clocksettings.txt`), a plain
+    relative-path file read straight off the app's own cwd, distinct from
+    the device-root /settings.txt this also seeds with plain
     width/height/tiles defaults (see run_app._seed_settings). Returns the
     exec-ready (source, path) for the app's own entry point, ready for
     `run_app._exec_as_main`. Mirrors run_app's own
@@ -137,11 +169,11 @@ def _stage_for_screenshot(
     interactive-only or web-UI-only."""
     if run_app._is_monolithic_kernel(framework_root):
         return _stage_monolithic_app_for_screenshot(
-            app_dir, framework_root, settings_src, args
+            app_dir, framework_root, settings_src, staged_name, args
         )
 
     return _stage_package_app_for_screenshot(
-        app_dir, framework_root, settings_src, args
+        app_dir, framework_root, settings_src, staged_name, args
     )
 
 
@@ -149,6 +181,7 @@ def _stage_monolithic_app_for_screenshot(
     app_dir: Path,
     framework_root: Path,
     settings_src: Path | None,
+    staged_name: str | None,
     args: argparse.Namespace,
 ) -> tuple[str, Path]:
     staged_root = run_app._stage_checkout(framework_root, reset=True)
@@ -165,7 +198,9 @@ def _stage_monolithic_app_for_screenshot(
         # code.py reading a sibling clock.html — so seeding here rides
         # along with that copy.
         unflattened_app_dir = staged_root / "apps" / app_dir.name
-        (unflattened_app_dir / settings_src.name).write_text(settings_src.read_text())
+        (unflattened_app_dir / (staged_name or settings_src.name)).write_text(
+            settings_src.read_text()
+        )
 
     run_app._seed_monolithic_settings(
         staged_root,
@@ -191,6 +226,7 @@ def _stage_package_app_for_screenshot(
     app_dir: Path,
     framework_root: Path,
     settings_src: Path | None,
+    staged_name: str | None,
     args: argparse.Namespace,
 ) -> tuple[str, Path]:
     if not (app_dir / "code.py").exists():
@@ -201,10 +237,13 @@ def _stage_package_app_for_screenshot(
 
     if settings_src is not None:
         # The app's own settings file, seeded straight into its staged
-        # directory under its original filename — a plain relative-path
-        # file the app reads off its own cwd, distinct from the
-        # device-root /settings.txt below (width/height/tiles only).
-        (staged_app_dir / settings_src.name).write_text(settings_src.read_text())
+        # directory under staged_name (its own filename, unless
+        # --rename-settings overrides it) — a plain relative-path file the
+        # app reads off its own cwd, distinct from the device-root
+        # /settings.txt below (width/height/tiles only).
+        (staged_app_dir / (staged_name or settings_src.name)).write_text(
+            settings_src.read_text()
+        )
 
     # SANDBOX_ROOT (not staged_app_dir) is where the device-root
     # settings.txt actually lives, matching real hardware's single
@@ -283,11 +322,14 @@ def run(args: argparse.Namespace) -> None:
     if not framework_root.exists():
         raise SystemExit(f"expected a matrixbox-style checkout at {framework_root}")
 
+    if args.rename_settings is not None and args.settings is None:
+        raise SystemExit("--rename-settings only makes sense together with --settings")
+
     settings_src = None
+    staged_name = None
     if args.settings is not None:
-        settings_src = app_dir / args.settings
-        if not settings_src.is_file():
-            raise SystemExit(f"no such settings file: {settings_src}")
+        settings_src = _resolve_settings_src(args.settings, app_dir)
+        staged_name = args.rename_settings or settings_src.name
 
         # Validated up front rather than left to run_app._seed_settings'
         # own _read_json: that swallows a parse error and falls back to
@@ -300,7 +342,7 @@ def run(args: argparse.Namespace) -> None:
         except (OSError, ValueError) as exc:
             raise SystemExit(f"invalid settings file {settings_src}: {exc}") from exc
 
-        _warn_if_settings_filename_looks_unused(app_dir, settings_src)
+        _warn_if_settings_filename_looks_unused(app_dir, settings_src, staged_name)
 
     # Resolved against the real launch directory, before staging below
     # os.chdir()s into the sandbox — a relative --output would otherwise
@@ -311,7 +353,7 @@ def run(args: argparse.Namespace) -> None:
 
     run_app._patch_stdlib()
     source, entry_path = _stage_for_screenshot(
-        app_dir, framework_root, settings_src, args
+        app_dir, framework_root, settings_src, staged_name, args
     )
 
     # Port 0: nothing ever connects to this server, it's only running so
