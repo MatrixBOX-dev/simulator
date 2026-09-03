@@ -507,13 +507,17 @@ def restart_process(reason: str = "to apply the new panel geometry") -> NoReturn
     # so exec() closes them before the new process opens fresh ones. Only
     # the CLI args get replayed, not argv[0], so this works the same
     # regardless of how the process was originally launched.
+    #
+    # Re-enter via cli.py, not this module directly: sys.argv[1:] already
+    # starts with the "app" subcommand token cli.py's parser expects, which
+    # this module's own parser would instead misread as the app argument.
     print(f"matrixbox-simulator: restarting {reason}...")
     os.execv(
         sys.executable,
         [
             sys.executable,
             "-m",
-            "matrixbox_simulator.device.run_app",
+            "matrixbox_simulator.cli",
             *_strip_geometry_flags(sys.argv[1:]),
         ],
     )
