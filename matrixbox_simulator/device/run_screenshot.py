@@ -5,10 +5,9 @@ Usage:
 
     matrixbox screenshot clock --settings ci.json -o clock.png
 
-Reuses `run_app`'s own staging (kernel detection, path sandboxing,
-settings seeding) — screenshot mode differs only in what happens after
-staging: no terminal, no button listener, no web UI, just wait for a
-frame and write it out.
+Reuses `run_app`'s own staging (path sandboxing, settings seeding) —
+screenshot mode differs only in what happens after staging: no terminal,
+no button listener, no web UI, just wait for a frame and write it out.
 """
 
 import argparse
@@ -155,35 +154,18 @@ def _stage_for_screenshot(
     staged_name: str | None,
     args: argparse.Namespace,
 ) -> tuple[str, Path]:
-    """Stages `app_dir` fresh (whichever kernel style it uses). If given,
-    `settings_src` is copied verbatim into the app's own staged directory
-    under `staged_name` (its own filename, unless --rename-settings
-    overrides it) — apps keep their own settings file there (e.g.
-    departures' `settings.txt`, clock's `clocksettings.txt`), a plain
-    relative-path file read straight off the app's own cwd, distinct from
-    the device-root /settings.txt this also seeds with plain
-    width/height/tiles defaults (see run_app._seed_settings). Returns the
-    exec-ready (source, path) for the app's own entry point, ready for
-    `run_app._exec_as_main`. Mirrors run_app's own
-    _run_main_kernel/_run_package_kernel split, minus everything that's
-    interactive-only or web-UI-only."""
-    if run_app._is_monolithic_kernel(framework_root):
-        return _stage_monolithic_app_for_screenshot(
-            app_dir, framework_root, settings_src, staged_name, args
-        )
-
-    return _stage_package_app_for_screenshot(
-        app_dir, framework_root, settings_src, staged_name, args
-    )
-
-
-def _stage_monolithic_app_for_screenshot(
-    app_dir: Path,
-    framework_root: Path,
-    settings_src: Path | None,
-    staged_name: str | None,
-    args: argparse.Namespace,
-) -> tuple[str, Path]:
+    """Stages `app_dir` fresh, via `run_app`'s own whole-checkout staging.
+    If given, `settings_src` is copied verbatim into the app's own staged
+    directory under `staged_name` (its own filename, unless
+    --rename-settings overrides it) — apps keep their own settings file
+    there (e.g. departures' `settings.txt`, clock's `clocksettings.txt`),
+    a plain relative-path file read straight off the app's own cwd,
+    distinct from the device-root /settings.txt this also seeds with
+    plain width/height/tiles defaults (see run_app._seed_settings).
+    Returns the exec-ready (source, path) for the app's own entry point,
+    ready for `run_app._exec_as_main`. Mirrors run_app's own
+    _run_kernel, minus everything that's interactive-only or
+    web-UI-only."""
     staged_root = run_app._stage_checkout(framework_root, reset=True)
     run_app._install_path_sandbox(staged_root)
     run_app._install_chdir_path_tracking()
@@ -202,7 +184,7 @@ def _stage_monolithic_app_for_screenshot(
             settings_src.read_text()
         )
 
-    run_app._seed_monolithic_settings(
+    run_app._seed_settings(
         staged_root,
         args.width,
         args.height,
@@ -218,56 +200,6 @@ def _stage_monolithic_app_for_screenshot(
 
     entry_path = staged_root / "main.py"
     os.chdir(staged_root)  # goes through tracked_chdir, seeds sys.path[0]
-
-    return entry_path.read_text(), entry_path
-
-
-def _stage_package_app_for_screenshot(
-    app_dir: Path,
-    framework_root: Path,
-    settings_src: Path | None,
-    staged_name: str | None,
-    args: argparse.Namespace,
-) -> tuple[str, Path]:
-    if not (app_dir / "code.py").exists():
-        raise SystemExit(f"{app_dir} doesn't look like an app (no code.py)")
-
-    staged_app_dir = run_app._stage_app(app_dir, reset=True)
-    run_app._install_path_sandbox(run_app.SANDBOX_ROOT)
-
-    if settings_src is not None:
-        # The app's own settings file, seeded straight into its staged
-        # directory under staged_name (its own filename, unless
-        # --rename-settings overrides it) — a plain relative-path file the
-        # app reads off its own cwd, distinct from the device-root
-        # /settings.txt below (width/height/tiles only).
-        (staged_app_dir / (staged_name or settings_src.name)).write_text(
-            settings_src.read_text()
-        )
-
-    # SANDBOX_ROOT (not staged_app_dir) is where the device-root
-    # settings.txt actually lives, matching real hardware's single
-    # flash-root settings file — see run_app._seed_settings. reset=True on
-    # _stage_app above only wipes this app's own staged code, so drop any
-    # leftover settings.txt from an earlier, unrelated run by hand:
-    # screenshot mode always starts from a clean, known state.
-    (run_app.SANDBOX_ROOT / "settings.txt").unlink(missing_ok=True)
-
-    run_app._seed_settings(
-        args.width,
-        args.height,
-        overwrite=args.geometry_explicit,
-        rotation=args.rotation_override,
-    )
-
-    sys.path.insert(0, str(run_app.REPO_ROOT))
-    sys.path.insert(0, str(framework_root))
-    sys.path.insert(0, str(framework_root / "lib"))
-    sys.path.insert(0, str(run_app.STUB_DIR))
-
-    entry_path = staged_app_dir / "code.py"
-    os.chdir(staged_app_dir)
-    sys.path.insert(0, str(staged_app_dir))
 
     return entry_path.read_text(), entry_path
 
@@ -308,8 +240,8 @@ def run(args: argparse.Namespace) -> None:
 
     os.environ["MATRIXBOX_SIMULATOR_REFRESH_FPS"] = str(args.refresh_fps)
     os.environ["MATRIXBOX_SIMULATOR_GAMMA"] = str(args.gamma)
-    # A monolithic-kernel app's main.py stands up its own web UI on this
-    # port (remapped from the device's real port 80 — see socketpool.py).
+    # The kernel's main.py stands up its own web UI on this port
+    # (remapped from the device's real port 80 — see socketpool.py).
     # Nothing external ever needs to reach it in headless screenshot mode,
     # so let the OS pick a free one instead of the fixed 8080 default,
     # which would otherwise collide with any other already-running
