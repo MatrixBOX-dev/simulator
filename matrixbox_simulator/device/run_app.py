@@ -370,9 +370,13 @@ def _seed_settings(
     # same way they would on real hardware.
     #
     # app_name is only set when launched with a single app to autostart.
-    # Launched against a full checkout instead, autostart is left alone:
-    # whatever's already saved decides whether it boots straight into an
-    # app or sits at the home menu, like real firmware would.
+    # Launched against a full checkout instead, autostart is cleared: a
+    # plain root boot always lands on the home menu, regardless of
+    # whatever an earlier single-app launch (or a previous root boot's
+    # own in-UI app pick) left saved here — unlike real firmware, where
+    # autostart is a sticky user preference, this is a dev sandbox and a
+    # stale autostart from a different, unrelated launch shouldn't leak
+    # into the next one.
     #
     # width/height are defaults, applied only when missing, unless the
     # caller explicitly picked a size this time (overwrite=True) — a human
@@ -384,8 +388,7 @@ def _seed_settings(
     # the sim-only panel count this displaces.
     settings_path = staged_root / "settings.txt"
     settings = _read_json(settings_path)
-    if app_name is not None:
-        settings["autostart"] = app_name
+    settings["autostart"] = app_name if app_name is not None else 0
 
     if overwrite:
         settings["width"] = width
@@ -618,7 +621,9 @@ def _reload_current_app(staged_root: Path, framework_root: Path) -> None:
     _relaunch_after_exit(name)
 
 
-def _relaunch_after_exit(name: str, *, timeout: float = 5.0) -> None:
+def _relaunch_after_exit(
+    name: str, *, timeout: float = 5.0, settle: float = 1.0
+) -> None:
     # app_running is the same flag every launch path already goes
     # through, whether that's a physical button pick or the web UI's run
     # route. Once the exit above actually lands and the kernel clears it,
@@ -632,7 +637,19 @@ def _relaunch_after_exit(name: str, *, timeout: float = 5.0) -> None:
     while getattr(kernel_module, "app_running", None) and time.monotonic() < deadline:
         time.sleep(0.05)
 
-    kernel_module.app_running = name  # ty: ignore[unresolved-attribute]
+    # The app itself clears app_running the moment it notices the long
+    # press, well before the kernel's own exit cleanup (module cache
+    # eviction, chdir, redrawing the home menu) actually finishes. That
+    # cleanup ends with `app_running = initialize_app()`'s return value,
+    # always False, assigned unconditionally — a name written here too
+    # early is silently clobbered by that assignment moments later. Keep
+    # re-asserting it until the kernel has clearly gone idle: nothing
+    # else touches this flag once that cleanup is done, so the last
+    # write in this window is necessarily ours.
+    settle_deadline = time.monotonic() + settle
+    while time.monotonic() < settle_deadline:
+        kernel_module.app_running = name  # ty: ignore[unresolved-attribute]
+        time.sleep(0.05)
 
 
 def _run_kernel(
