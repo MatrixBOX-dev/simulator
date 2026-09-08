@@ -1,5 +1,4 @@
 /target
-matrixbox_simulator/device/sandbox_fs/
 __pycache__/
 *.pyc
 .venv/

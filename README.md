@@ -15,9 +15,10 @@ It's two halves that talk over a local WebSocket:
   `bitmaptools`, `wifi`, and so on), backed by plain Python instead of real
   hardware. It runs an app's actual code, and every `display.refresh()`
   gets pushed out as a frame. An app runs from a staged copy of its own
-  code, kept in a gitignored folder so settings it saves (brightness,
-  Wi-Fi, whatever it writes to `settings.txt`) survive between runs, the
-  same way they'd survive a reflash on real hardware.
+  code, kept in a per-user cache directory (see "Sandbox" below) so
+  settings it saves (brightness, Wi-Fi, whatever it writes to
+  `settings.txt`) survive between runs, the same way they'd survive a
+  reflash on real hardware.
 - **`matrixbox_simulator.term`**: a terminal renderer, built on `rich`, that
   connects, decodes those frames, and draws them with Unicode half-blocks
   and truecolor. Framed in a white border, with a stats line underneath
@@ -121,12 +122,9 @@ needs a real terminal, not a redirected or piped one):
 
 - `s` / `l`: short or long front-panel button press. Long usually exits
   the app, same as holding the real button.
-- `r`: reload the running app, only offered when booted at a checkout's
-  root (not a single app). Copies that app's code fresh from your
-  checkout, then triggers the same exit a long press would, so it comes
-  back running your changes without a full restart.
-- `R`: restart the whole process, picking up a core code change (not
-  just an app's own) rather than requiring a manual stop and rerun.
+- `r`: reload by restarting the whole process. Staging always re-syncs
+  the entire checkout fresh on boot, so this alone picks up both app and
+  core code changes, then boots straight back into whatever was running.
 - `+` / `-`: adjust refresh pacing live. See "Animation speed" below.
 - `[` / `]`: adjust color gamma live. See "Colors" below.
 - `z`: cycle through panel sizes live. See "Panel sizes" above.
@@ -274,6 +272,33 @@ sets the output PNG's pixel scale factor (default 8, so a 128x32 panel
 becomes a 1024x256 image). `--size` / `--width` / `--height` pick the
 panel size, same as `matrixbox app` (see "Panel sizes" above).
 
+## Sandbox
+
+Every `matrixbox app`/`screenshot` run stages a fresh copy of the
+checkout (or one app) into a per-user cache directory, never inside this
+package's own install — a global install's site-packages often isn't
+writable at all, and installed code should stay read-only regardless.
+That's also where saved settings (brightness, Wi-Fi, whatever an app
+writes to `settings.txt`) persist between runs.
+
+Location, in priority order:
+
+1. `$XDG_CACHE_HOME/matrixbox-simulator/sandbox_fs`, if `XDG_CACHE_HOME`
+   is set.
+2. `~/Library/Caches/matrixbox-simulator/sandbox_fs` on macOS.
+3. `%LOCALAPPDATA%\matrixbox-simulator\sandbox_fs` on Windows.
+4. `~/.cache/matrixbox-simulator/sandbox_fs` otherwise (the POSIX
+   default, and also what `XDG_CACHE_HOME` itself defaults to when
+   unset).
+
+Nothing precious lives there — it's all re-derived from the real
+checkout on the next run. Inspect or clear it with:
+
+```sh
+uv run matrixbox sandbox info   # prints its location and on-disk size
+uv run matrixbox sandbox clean  # deletes it entirely
+```
+
 ## Useful flags
 
 `uv run matrixbox app`: `--size` or `--width` / `--height` for panel
@@ -286,6 +311,8 @@ and start fresh, `--refresh-fps` / `--gamma` (see above).
 "Panel sizes" above), `--fps` (demo mode only).
 
 `uv run matrixbox screenshot`: see "Screenshots" above.
+
+`uv run matrixbox sandbox`: see "Sandbox" above.
 
 ## Limitations
 

@@ -1,9 +1,9 @@
-"""Single `matrixbox` entrypoint, with `app`, `simulator`, and `screenshot`
-as subcommands."""
+"""Single `matrixbox` entrypoint, with `app`, `simulator`, `screenshot`,
+and `sandbox` as subcommands."""
 
 import argparse
 
-from matrixbox_simulator.device import run_app, run_screenshot
+from matrixbox_simulator.device import run_app, run_sandbox, run_screenshot
 from matrixbox_simulator.term import run_simulator
 
 
@@ -32,6 +32,13 @@ def main() -> None:
             description=run_screenshot.__doc__,
         )
     )
+    run_sandbox.build_parser(
+        subparsers.add_parser(
+            "sandbox",
+            help="inspect or clear the simulator's staged sandbox",
+            description=run_sandbox.__doc__,
+        )
+    )
 
     args = parser.parse_args()
     if args.command == "app":
@@ -40,6 +47,8 @@ def main() -> None:
         run_screenshot.run(args)
     elif args.command == "simulator":
         run_simulator.run(args)
+    elif args.command == "sandbox":
+        run_sandbox.run(args)
     else:
         raise AssertionError(f"unhandled command: {args.command!r}")
 
