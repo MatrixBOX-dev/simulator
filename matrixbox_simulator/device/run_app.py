@@ -52,8 +52,23 @@ except ImportError:
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 MATRIXBOX_ROOT = REPO_ROOT.parent / "matrixbox"
-STUB_DIR = Path(__file__).resolve().parent / "cpstubs"
-SANDBOX_ROOT = Path(__file__).resolve().parent / "sandbox_fs"
+STUB_DIR = Path(__file__).resolve().parent / "cpstubs"  # bundled, read-only
+
+
+def _default_sandbox_root() -> Path:
+    if xdg_cache := os.environ.get("XDG_CACHE_HOME"):
+        cache_root = Path(xdg_cache)
+    elif sys.platform == "darwin":
+        cache_root = Path.home() / "Library" / "Caches"
+    elif sys.platform == "win32" and (local_app_data := os.environ.get("LOCALAPPDATA")):
+        cache_root = Path(local_app_data)
+    else:
+        cache_root = Path.home() / ".cache"
+
+    return cache_root / "matrixbox-simulator" / "sandbox_fs"
+
+
+SANDBOX_ROOT = _default_sandbox_root()
 
 # The matrixbox device profile this sim pretends to be. Only the board
 # name has to match matrixbox's own board-detection logic; the pins it
