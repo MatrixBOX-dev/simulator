@@ -1,89 +1,71 @@
 # matrixbox-simulator
 
+[![CI](https://github.com/MatrixBOX-dev/simulator/actions/workflows/ci.yml/badge.svg)](https://github.com/MatrixBOX-dev/simulator/actions/workflows/ci.yml)
+![PyPI Version](https://img.shields.io/pypi/v/matrixbox)
+
 A desktop simulator for [matrixbox][matrixbox], the [CircuitPython][circuitpython]
-app that drives an LED matrix on a Waveshare ESP32-S3-Zero. It runs an
-app's real, unmodified code on your desktop Python interpreter instead of
-reimplementing it, and streams what it draws to a terminal renderer so you
-can see it without touching hardware.
+app that drives an LED matrix on a Waveshare ESP32-S3-Zero. Runs an app's
+real, unmodified code on your desktop Python interpreter and streams what
+it draws to a terminal renderer, no hardware needed.
 
 ![demo](./asset/sim-image.png)
 
-It's two halves that talk over a local WebSocket:
+## Installation
 
-- **`matrixbox_simulator.device`**: a Python package that stands in for the
-  CircuitPython modules matrixbox needs (`displayio`, `rgbmatrix`,
-  `bitmaptools`, `wifi`, and so on), backed by plain Python instead of real
-  hardware. It runs an app's actual code, and every `display.refresh()`
-  gets pushed out as a frame. An app runs from a staged copy of its own
-  code, kept in a per-user cache directory (see "Sandbox" below) so
-  settings it saves (brightness, Wi-Fi, whatever it writes to
-  `settings.txt`) survive between runs, the same way they'd survive a
-  reflash on real hardware.
-- **`matrixbox_simulator.term`**: a terminal renderer, built on `rich`, that
-  connects, decodes those frames, and draws them with Unicode half-blocks
-  and truecolor. Framed in a white border, with a stats line underneath
-  (app name, measured FPS, real CPU load from matrixbox's own tick-load
-  tracker, and the simulator's peak memory use, which is not the device's
-  real heap, just a rough signal for whether an app is leaking).
+```sh
+pip install matrixbox
+```
+
+Or, with [uv][uv]:
+
+```sh
+uv tool add matrixbox
+```
 
 ## Requirements
 
-- [`uv`][uv]
-- A local checkout of [matrixbox][matrixbox-source]. By default it's expected as
-  a sibling directory (`../matrixbox`), but any app directory can be pointed at
-  explicitly (see below).
+- Python 3.11+
+- A local checkout of [matrixbox][matrixbox-source], pointed at explicitly
+  (see below).
 
 ## Quick start
 
-Terminal 1, run an app:
+Terminal 1, point it at your [matrixbox][matrixbox-source] checkout —
+either its root, to boot the whole system and pick an app from its home
+menu:
 
 ```sh
-uv run matrixbox app clock
+matrixbox app /path/to/matrixbox
+```
+
+or one specific app directly, to autostart straight into it:
+
+```sh
+matrixbox app /path/to/matrixbox/apps/clock
 ```
 
 Terminal 2, watch it:
 
 ```sh
-uv run matrixbox simulator --connect ws://127.0.0.1:9191
+matrixbox simulator --connect ws://127.0.0.1:9191
 ```
 
 The renderer waits for the simulator if it isn't up yet, and reconnects
 automatically if you stop it to switch apps, so you can just leave it
 running.
 
-You can point it at an app anywhere, not just `../matrixbox/apps/*`.
-Whatever directory you give it gets staged and launched automatically.
+While an app is running, its real settings page is served too, at
+`http://127.0.0.1:8080/` (override with `MATRIXBOX_SIMULATOR_HTTP_PORT`).
 
-Point it at a whole checkout's root instead of one app directory and it
-boots the checkout as a system, not a single app: no app starts
-automatically, so you land on its own home menu and can switch between
-apps from there, the same way you would on the real device.
-
-While an app is running, its real settings page is served too:
-
-```sh
-http://127.0.0.1:8080/
-```
-
-Port 80 is what the device would use, but unprivileged desktop processes
-can't bind it, so it's remapped. Override with `MATRIXBOX_SIMULATOR_HTTP_PORT`
-if you need a different one.
-
-No app running yet? The renderer draws an animated demo pattern on its own
-when run without `--connect`, which is a quick way to check it's working:
-
-```sh
-uv run matrixbox simulator
-```
+No app running yet? `matrixbox simulator` on its own draws an animated
+demo pattern, a quick way to check it's working.
 
 ## Panel sizes
 
-`uv run matrixbox app --size {XS,X,XL,2X}` picks a real product size
-(width and height together). `uv run matrixbox simulator --device
-{XS,X,XL,2X}` sizes the
-demo pattern and the placeholder box to match, for watching a specific
-size without a device connected; combining it with `--width`/`--height`
-is an error, since they'd conflict.
+`matrixbox app --size {XS,X,XL,2X}` picks a real product size (width and
+height together). `matrixbox simulator --device {XS,X,XL,2X}` sizes the
+demo pattern and the placeholder box to match; combining it with
+`--width`/`--height` is an error, since they'd conflict.
 
 | Size | Dimensions | Panels |
 | ---- | ---------- | ------ |
@@ -92,88 +74,51 @@ is an error, since they'd conflict.
 | `XL` | 192x32     | 3      |
 | `2X` | 128x64     | 1      |
 
-X and XL aren't one wide panel, they're 2 or 3 separate 64x32 boards side
-by side (`2X`'s own panel count isn't confirmed; assumed a single matrix
-for now). That panel count is purely a display-side idea for the
-renderer's tile-boundary overlay below, not a real setting: real
-firmware's own size-preset endpoint sets `settings["tiles"]` to `1`
-regardless of size, so this sim does too. `--width`/`--height` still work
-directly for anything else, with no seam overlay available.
+Panel count is a display-only idea, for the renderer's tile-seam overlay
+— real firmware always saves `tiles: 1` regardless of size, and so does
+this sim. `--width`/`--height` work directly for any other size, with no
+seam overlay.
 
-Real hardware only reads its panel geometry from `settings.txt` at boot,
-and reboots whenever it changes there, since the wiring can't be
-reconfigured live. This sim does the same: changing width/height from
-the real settings UI reboots the sim process the same way, and `z`
-cycles through the four sizes live from the terminal running `uv run
-app`, also via a real restart. Either way, whatever an app already saved
-survives the restart, same as a real reboot.
+Real hardware only reads panel geometry from `settings.txt` at boot and
+reboots whenever it changes, since the wiring can't reconfigure live.
+This sim does the same: changing width/height from the settings UI, or
+`z` cycling through sizes from the `matrixbox app` terminal, both reboot
+the process. Whatever an app already saved survives the restart either
+way.
 
-Selecting XL also rotates the panel 180 degrees, on real hardware and
-here. That's not a bug, it's what the real firmware's own preset
-endpoint does too, presumably compensating for how that specific
-enclosure is physically wired. It also doesn't reset rotation back when
-you switch away from XL to something else, apparently never addressed on
-real firmware either, so this mirrors that as-is.
+Selecting XL also rotates the panel 180°, matching real firmware — it
+doesn't reset the rotation back when you switch away from XL either,
+also matching real firmware.
 
 ## Controls
 
-Typed into whichever terminal is running `uv run matrixbox app` (it
-needs a real terminal, not a redirected or piped one):
+Typed into whichever terminal is running `matrixbox app` (needs a real
+terminal, not a redirected or piped one):
 
 - `s` / `l`: short or long front-panel button press. Long usually exits
   the app, same as holding the real button.
-- `r`: reload by restarting the whole process. Staging always re-syncs
-  the entire checkout fresh on boot, so this alone picks up both app and
-  core code changes, then boots straight back into whatever was running.
+- `r`: reload by restarting the whole process, picking up any code
+  change (app or core), then boots straight back into whatever was
+  running.
 - `+` / `-`: adjust refresh pacing live. See "Animation speed" below.
 - `[` / `]`: adjust color gamma live. See "Colors" below.
 - `z`: cycle through panel sizes live. See "Panel sizes" above.
 
-Typed into whichever terminal is running `uv run matrixbox simulator`
-instead:
+Typed into whichever terminal is running `matrixbox simulator` instead:
 
-- `t`: toggle a guide line at each panel seam (see "Panel sizes"). Off by
-  default, since it isn't something the real device shows, just a design
-  aid for content that might straddle a seam. Current state always shows
-  in the stats line underneath the panel.
+- `t`: toggle a guide line at each panel seam (see "Panel sizes"). Off
+  by default; current state always shows in the stats line underneath.
 
 ## Animation speed
 
-Real hardware paces itself: a `display.refresh()` call takes real time to
-bit-bang pixels out over GPIO, and CPU-heavier apps do more work between
-calls. This sim's `refresh()` is close to free, so how an app was written
-determines whether that matters:
+Real hardware paces itself: `display.refresh()` takes real time to
+bit-bang pixels out over GPIO. This sim's `refresh()` is close to free,
+so an app that relies on that cost for its own pacing runs faster than
+real hardware unless you give it back.
 
-- Apps that pace themselves against elapsed real time (`time.monotonic()`
-  deltas, explicit `time.sleep()`) run correctly regardless, since
-  they're not depending on refresh() cost for anything. `lastfm` is like
-  this.
-- Apps with no pacing of their own, just state advanced once per loop
-  iteration, run however fast this sim's loop can spin, which is usually
-  much faster than real hardware. `screensaver`'s built-in savers are
-  like this.
-- Apps that call `refresh()` many times per logical step as their own
-  deliberate speed control (more calls, more real time, slower) lose
-  that control entirely once refresh() is free. `departures`' scroll
-  pacing is like this.
-
-`--refresh-fps <n>` (and live `+`/`-`) gives `refresh()` a small,
-roughly-constant per-call cost, approximating real hardware's own
-bit-banging time, so an app that depends on that cost for pacing gets it
-back. Off (0) by default. There's no way to know or guess the right
-value without testing against the real device: how CPU-heavy a given
-app's own logic is between `refresh()` calls varies per app, so this is
-one knob standing in for something that's actually app-specific, not a
-universal setting. Expect to tune it per app, and expect some apps (like
-`lastfm`) to need it left alone entirely.
-
-Separately, the sim caps how often it actually broadcasts a _changed_
-frame to the renderer (currently 120fps). That's pure safety, protecting
-the renderer from a flood of frames it can't coherently draw, not an
-attempt to model real timing. It doesn't push back on `--refresh-fps`,
-and it never delays a frame that hasn't actually changed.
-
-Values found to look right against real hardware so far:
+`--refresh-fps <n>` (live: `+`/`-`) gives `refresh()` a small, roughly
+constant per-call cost. Off (0) by default — most apps don't need it.
+Known-good values:
 
 | App                       | `--refresh-fps` |
 | ------------------------- | --------------- |
@@ -185,92 +130,57 @@ Values found to look right against real hardware so far:
 | `screensaver` (starcloud) | 90-100          |
 
 `screensaver` picks which saver runs from its own settings, so the right
-value depends on which one is active. Everything else, `lastfm` included,
-looks right left alone (0, off).
+value depends on which one is active. Everything else, `lastfm`
+included, looks right left alone.
 
 ## Colors
 
-Some apps render noticeably dimmer here than they look in person. The
-likely cause: a raw PWM-driven LED at a given RGB value reads brighter to
-the eye than the same value does on an LCD or terminal, and colors were
-tuned by eye against the real panel, not a monitor.
+Some apps look dimmer here than on real hardware: colors are tuned by
+eye against a raw LED panel, which reads brighter than the same RGB
+value does on a screen.
 
-`stocks` is a clean example: its own code sets its "white" text color to
-`(50,50,50)` directly, no per-app setting involved at all, so there's
-nothing to tune except the color itself being a genuinely low RGB value.
-`scroller` instead reaches for the framework's own shared display
-library's "white", which is `(20,20,20)` there (`(100,100,100)` for
-"brightwhite"). Different apps, different actual values, same underlying
-gap between what looks right on an LED panel and what looks right on a
-screen.
-
-`departures` looked like a different problem at first, since it has its
-own `brightness` setting that visibly helps when turned up. But the real
-device's own `settings.txt` has that setting at 0 (unscaled, no boost)
-and still looks right in person, which means the dimness at 0 isn't
-about departures' setting at all, it's the same LED-vs-monitor gap as
-stocks and scroller. Turning brightness up in the sim was papering over
-that gap with an app setting that happened to be available, not fixing
-the actual cause.
-
-`--gamma <n>` (and live `[`/`]`) corrects for this by boosting dim values
-more than bright ones before they're drawn. Off (1.0) by default.
-
-In practice this ends up per-app rather than one fixed panel constant:
-different apps lean on different parts of the color range, and gamma is
-a curve, not a flat offset, so how much correction looks right shifts
-with it. Values found to look right so far:
+`--gamma <n>` (live: `[`/`]`) corrects for this, boosting dim values
+more than bright ones. Off (1.0) by default; per-app, since how much
+correction looks right depends on which part of the color range an app
+leans on. Known-good values:
 
 | App                      | `--gamma` |
 | ------------------------ | --------- |
 | `departures`             | 3.0       |
 | `screensaver` (aquarium) | 2.4       |
 
-As a rule of thumb, `stocks`' own `(50,50,50)` "white" needs roughly
-`--gamma 5.0` to actually read as white here rather than grey. Values
-like this are deliberately low, not `(255,255,255)`, since a raw LED at
-full brightness would be blinding in person; a color that's already
-`(255,255,255)` looks white in the sim with no gamma correction at all
-(there's no headroom left to boost), which is exactly why apps don't use
-it. Start around 5.0 for a similarly low "should read as white" value
-and adjust live with `[`/`]` for anything not listed.
+For anything not listed, start around 5.0 and adjust live with `[`/`]`.
 
 ## Screenshots
 
 For CI, PR previews, or anywhere else a terminal isn't available:
 
 ```sh
-uv run matrixbox screenshot clock -o clock.png
+matrixbox screenshot /path/to/matrixbox/apps/clock -o clock.png
 ```
 
-Boots one app headlessly (no terminal, no button listener), waits for it
-to draw, writes the result to a PNG, and exits — no second terminal or
-`--connect` needed. `--settings <path>` seeds it with a settings file
-before boot: a bare filename is resolved inside the app's own directory
-(e.g. `--settings ci.json` for `apps/clock/ci.json`), anything else (e.g.
-`~/tmp/settings-one.txt`) is used as given; omit it to boot with plain
-defaults. It's staged under its own filename unless `--rename-settings
-<name>` says otherwise — handy for keeping several seed files around
-(e.g. `settings-one.txt`, `settings-two.txt`) that each need to land as
-the one filename the app actually reads (e.g. `settings.txt`), to
-screenshot an app under a few different configurations in a row:
+Boots one app headlessly, waits for it to draw, writes the result to a
+PNG, and exits. `--settings <path>` seeds it with a settings file before
+boot: a bare filename resolves inside the app's own directory (e.g.
+`--settings ci.json` for `apps/clock/ci.json`), anything else is used as
+given; omit it to boot with plain defaults. It's staged under its own
+filename unless `--rename-settings <name>` says otherwise — handy for
+screenshotting the same app under a few different configurations:
 
 ```sh
-uv run matrixbox screenshot apps/departures --settings settings-one.txt --rename-settings settings.txt -o one.png
-uv run matrixbox screenshot apps/departures --settings settings-two.txt --rename-settings settings.txt -o two.png
+matrixbox screenshot /path/to/matrixbox/apps/departures --settings settings-one.txt --rename-settings settings.txt -o one.png
+matrixbox screenshot /path/to/matrixbox/apps/departures --settings settings-two.txt --rename-settings settings.txt -o two.png
 ```
 
-Always starts from a clean, reset state, regardless of whatever an
-earlier `uv run matrixbox app` run against the same app may have saved.
+Always starts from a clean, reset state, regardless of anything an
+earlier `matrixbox app` run against the same app saved.
 
 By default it captures as soon as one frame is drawn, waiting up to 5
-seconds; `--after-frames <n>` and `--timeout <seconds>` adjust both,
-whichever is reached first. An app that never draws in time, or raises
-while starting up, exits non-zero with the error printed, so a CI job
-fails loudly instead of shipping a blank or stale image. `--scale <n>`
-sets the output PNG's pixel scale factor (default 8, so a 128x32 panel
-becomes a 1024x256 image). `--size` / `--width` / `--height` pick the
-panel size, same as `matrixbox app` (see "Panel sizes" above).
+seconds; `--after-frames <n>` and `--timeout <seconds>` adjust both. An
+app that never draws in time, or raises while starting up, exits
+non-zero with the error printed. `--scale <n>` sets the output PNG's
+pixel scale factor (default 8). `--size` / `--width` / `--height` pick
+the panel size, same as `matrixbox app`.
 
 ## Sandbox
 
@@ -283,36 +193,18 @@ writes to `settings.txt`) persist between runs.
 
 Location, in priority order:
 
-1. `$XDG_CACHE_HOME/matrixbox-simulator/sandbox_fs`, if `XDG_CACHE_HOME`
-   is set.
+1. `$XDG_CACHE_HOME/matrixbox-simulator/sandbox_fs`, if set.
 2. `~/Library/Caches/matrixbox-simulator/sandbox_fs` on macOS.
 3. `%LOCALAPPDATA%\matrixbox-simulator\sandbox_fs` on Windows.
-4. `~/.cache/matrixbox-simulator/sandbox_fs` otherwise (the POSIX
-   default, and also what `XDG_CACHE_HOME` itself defaults to when
-   unset).
+4. `~/.cache/matrixbox-simulator/sandbox_fs` otherwise.
 
 Nothing precious lives there — it's all re-derived from the real
 checkout on the next run. Inspect or clear it with:
 
 ```sh
-uv run matrixbox sandbox info   # prints its location and on-disk size
-uv run matrixbox sandbox clean  # deletes it entirely
+matrixbox sandbox info   # prints its location and on-disk size
+matrixbox sandbox clean  # deletes it entirely
 ```
-
-## Useful flags
-
-`uv run matrixbox app`: `--size` or `--width` / `--height` for panel
-size (default 128x32, see "Panel sizes" above), `--ws-host` / `--ws-port`
-(default `127.0.0.1:9191`), `--reset` to wipe this app's saved settings
-and start fresh, `--refresh-fps` / `--gamma` (see above).
-
-`uv run matrixbox simulator`: `--connect <url>` (omit for demo mode),
-`--device` or `--width` / `--height` for the demo/placeholder size (see
-"Panel sizes" above), `--fps` (demo mode only).
-
-`uv run matrixbox screenshot`: see "Screenshots" above.
-
-`uv run matrixbox sandbox`: see "Sandbox" above.
 
 ## Limitations
 
@@ -327,7 +219,9 @@ and start fresh, `--refresh-fps` / `--gamma` (see above).
 ## Development
 
 ```sh
-uv run ruff format . && uv run ruff check . && uv run ty check .
+uv run ruff format .  # format
+uv run ruff check .   # lint and fix
+uv run ty check .     # type check
 ```
 
 [matrixbox]: https://www.matrixbox.app
