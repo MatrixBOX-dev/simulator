@@ -26,7 +26,6 @@ import shutil
 import signal
 import sys
 import threading
-import time
 import traceback
 import types
 from collections.abc import Callable, Iterator
@@ -432,7 +431,7 @@ _GEOMETRY_FLAGS = ("--size", "--width", "--height")
 
 
 def _strip_geometry_flags(argv: list[str]) -> list[str]:
-    # An internal restart (cycling size, a settings-UI change, 'R')
+    # An internal restart (cycling size, a settings-UI change, 'r')
     # already wrote the new geometry to settings before restarting —
     # that's now authoritative. Replaying the original launch's own size/
     # width/height would fight that, since an explicit geometry value
@@ -485,28 +484,11 @@ def restart_process(reason: str = "to apply the new panel geometry") -> NoReturn
     )
 
 
-def _current_running_app_name() -> str | None:
-    # Peeks at the kernel's own "what's running" state, already live,
-    # rather than tracking it ourselves separately: it already maintains
-    # this for its own home menu, so this stays correct across in-process
-    # app switches we're not otherwise told about.
-    kernel_module = sys.modules.get("load_settings")
-    if kernel_module is not None:
-        running = getattr(kernel_module, "app_running", None)
-        if isinstance(running, str) and running:
-            return running
-
-    return None
-
-
-def _controls_hint(reload_app: Callable[[], None] | None) -> str:
-    controls = "'s'/'l' button, '+'/'-' refresh-fps, '['/']' gamma, 'z' cycle size"
-    if reload_app is not None:
-        controls += ", 'r' reload app"
-
-    controls += ", 'R' reload core (restarts)"
-
-    return controls
+def _controls_hint() -> str:
+    return (
+        "'s'/'l' button, '+'/'-' refresh-fps, '['/']' gamma, 'z' cycle size, "
+        "'r' reload (restarts)"
+    )
 
 
 def _cycle_size(settings_path: Path) -> NoReturn:
@@ -592,66 +574,6 @@ def _bump_gamma(direction: int) -> None:
     print(f"matrixbox-simulator: gamma now {label}")
 
 
-def _reload_current_app(staged_root: Path, framework_root: Path) -> None:
-    name = _current_running_app_name()
-    if name is None:
-        print("matrixbox-simulator: nothing running to reload")
-        return
-
-    src = framework_root / "apps" / name
-    if not src.is_dir():
-        print(f"matrixbox-simulator: can't find {name!r} under {src.parent}")
-        return
-
-    # The kernel flattens the running app to the checkout root once it
-    # actually boots it, but staging itself never does — refresh whichever
-    # layout the currently running app is actually staged under, flattened
-    # (post-boot) or still nested in apps/ (not booted yet).
-    flattened = staged_root / name
-    dst = flattened if flattened.is_dir() else staged_root / "apps" / name
-    _sync_tree(src, dst)
-    print(f"matrixbox-simulator: reloading {name!r} with fresh code...")
-
-    # Reuses the exact exit path a real long button press already takes:
-    # the app notices and exits on its own. Real firmware's autostart is
-    # one-shot, not "keep this app running forever" — it clears itself
-    # the first time any app exits, so left alone the kernel would just
-    # land on its app-select screen, waiting for a physical button press.
-    button_input.press(2.2)
-    _relaunch_after_exit(name)
-
-
-def _relaunch_after_exit(
-    name: str, *, timeout: float = 5.0, settle: float = 1.0
-) -> None:
-    # app_running is the same flag every launch path already goes
-    # through, whether that's a physical button pick or the web UI's run
-    # route. Once the exit above actually lands and the kernel clears it,
-    # setting it back to the reloaded app's name makes the kernel's own
-    # next loop iteration relaunch it, fresh code in place.
-    kernel_module = sys.modules.get("load_settings")
-    if kernel_module is None:
-        return
-
-    deadline = time.monotonic() + timeout
-    while getattr(kernel_module, "app_running", None) and time.monotonic() < deadline:
-        time.sleep(0.05)
-
-    # The app itself clears app_running the moment it notices the long
-    # press, well before the kernel's own exit cleanup (module cache
-    # eviction, chdir, redrawing the home menu) actually finishes. That
-    # cleanup ends with `app_running = initialize_app()`'s return value,
-    # always False, assigned unconditionally — a name written here too
-    # early is silently clobbered by that assignment moments later. Keep
-    # re-asserting it until the kernel has clearly gone idle: nothing
-    # else touches this flag once that cleanup is done, so the last
-    # write in this window is necessarily ours.
-    settle_deadline = time.monotonic() + settle
-    while time.monotonic() < settle_deadline:
-        kernel_module.app_running = name  # ty: ignore[unresolved-attribute]
-        time.sleep(0.05)
-
-
 def _run_kernel(
     framework_root: Path, args: argparse.Namespace, app_dir: Path | None = None
 ) -> None:
@@ -713,13 +635,10 @@ def _run_kernel(
     os.chdir(staged_root)  # goes through tracked_chdir, seeds sys.path[0]
     source = main_path.read_text()
 
-    def reload_app() -> None:
-        _reload_current_app(staged_root, framework_root)
-
     def cycle_size() -> NoReturn:
         _cycle_size(staged_root / "settings.txt")
 
-    with _button_listener(reload_app=reload_app, cycle_size=cycle_size):
+    with _button_listener(cycle_size=cycle_size):
         try:
             _exec_as_main(source, main_path)
         except KeyboardInterrupt:
@@ -760,15 +679,15 @@ def _install_hard_sigint_handler() -> None:
 @contextlib.contextmanager
 def _button_listener(
     *,
-    reload_app: Callable[[], None] | None = None,
     cycle_size: Callable[[], None] | None = None,
 ) -> Iterator[None]:
     # Simulates the front-panel button from the terminal: 's' short press,
-    # 'l' long press (usually exits the app). 'r', where offered, reloads
-    # the running app's code in-process. 'R' goes further and restarts
-    # the whole process — the only way to pick up a core code change
-    # rather than just an app's own. No-ops when stdin isn't a real
-    # terminal, or termios/tty aren't available at all.
+    # 'l' long press (usually exits the app). 'r' reloads by restarting
+    # the whole process — staging always re-syncs the entire checkout
+    # fresh on boot, so this alone picks up both app and core code
+    # changes; no in-process reload path to keep in sync with it. No-ops
+    # when stdin isn't a real terminal, or termios/tty aren't available
+    # at all.
     if not sys.stdin.isatty() or termios is None:
         yield
         return
@@ -798,14 +717,8 @@ def _button_listener(
             elif char == "l":
                 button_input.press(2.2)
                 print("matrixbox-simulator: button, long press")
-            elif char == "r" and reload_app is not None:
-                reload_app()
-            elif char == "R":
-                # Unlike 'r', this restarts outright: it's the only way
-                # to pick up a core code change, since that's only ever
-                # read once, at process start. Root settings survive the
-                # same way app-level settings do across 'r'.
-                restart_process(reason="to reload core code")
+            elif char == "r":
+                restart_process(reason="to reload app and core code")
             elif char == "+":
                 _bump_refresh_fps(1)
             elif char == "-":
@@ -819,7 +732,7 @@ def _button_listener(
 
     thread = threading.Thread(target=listen, daemon=True)
     thread.start()
-    print(f"matrixbox-simulator: controls: {_controls_hint(reload_app)}")
+    print(f"matrixbox-simulator: controls: {_controls_hint()}")
 
     try:
         yield
