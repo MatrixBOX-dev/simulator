@@ -13,13 +13,13 @@ it draws to a terminal renderer, no hardware needed.
 ## Installation
 
 ```sh
-pip install matrixbox
+pip install matrixbox-simulator
 ```
 
-Or, with [uv][uv]:
+Or, as a tool with [uv][uv]:
 
 ```sh
-uv tool add matrixbox
+uv tool add matrixbox-simulator
 ```
 
 ## Requirements
