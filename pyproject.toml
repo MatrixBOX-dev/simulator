@@ -2,6 +2,7 @@
 name = "matrixbox-simulator"
 version = "0.1.0"
 description = "A desktop simulator and terminal visualizer for matrixbox apps"
+readme = "README.md"
 license = "MIT"
 authors = [
   { name = "Simon Sawert", email = "simon@sawert.se" }
