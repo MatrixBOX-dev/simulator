@@ -2,12 +2,12 @@
 
 Usage:
 
-    matrixbox simulator --connect ws://127.0.0.1:9191
-
-No simulator running? Omit --connect to run an animated demo pattern
-instead:
-
     matrixbox simulator
+
+Connects to ws://127.0.0.1:9191 by default; --connect overrides that.
+No simulator running? --demo draws an animated demo pattern instead:
+
+    matrixbox simulator --demo
 """
 
 import argparse
@@ -39,6 +39,10 @@ except ImportError:
 # simulator restarting to switch apps).
 RECONNECT_DELAY_SECONDS = 0.3
 
+# matrixbox app's own --ws-port default: matches so the common case, one
+# app and one renderer on the same machine, needs no --connect at all.
+DEFAULT_CONNECT_URL = "ws://127.0.0.1:9191"
+
 
 def build_parser(
     parser: argparse.ArgumentParser | None = None,
@@ -48,10 +52,15 @@ def build_parser(
 
     parser.add_argument(
         "--connect",
-        default=None,
-        help="Frame server to connect to, e.g. ws://127.0.0.1:9191. Omit to run "
-        "an animated demo pattern instead, useful for exercising the renderer "
-        "without the simulator running.",
+        default=DEFAULT_CONNECT_URL,
+        help=f"Frame server to connect to (default: {DEFAULT_CONNECT_URL}).",
+    )
+    parser.add_argument(
+        "--demo",
+        action="store_true",
+        help="Draw an animated demo pattern instead of connecting to a frame "
+        "server, useful for exercising the renderer without the simulator "
+        "running.",
     )
     parser.add_argument(
         "--device",
@@ -113,12 +122,12 @@ def run(args: argparse.Namespace) -> None:
     renderer = TerminalRenderer()
     try:
         with _key_listener(renderer):
-            if args.connect:
+            if args.demo:
+                run_demo(args.width, args.height, tiles, args.fps, renderer, is_running)
+            else:
                 run_connected(
                     args.connect, args.width, args.height, tiles, renderer, is_running
                 )
-            else:
-                run_demo(args.width, args.height, tiles, args.fps, renderer, is_running)
     finally:
         renderer.stop()
 

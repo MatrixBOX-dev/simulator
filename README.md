@@ -47,18 +47,19 @@ matrixbox app /path/to/matrixbox/apps/clock
 Terminal 2, watch it:
 
 ```sh
-matrixbox simulator --connect ws://127.0.0.1:9191
+matrixbox simulator
 ```
 
-The renderer waits for the simulator if it isn't up yet, and reconnects
-automatically if you stop it to switch apps, so you can just leave it
-running.
+Connects to `ws://127.0.0.1:9191` by default, matching `matrixbox app`'s
+own default port — use `--connect <url>` if you changed it. The renderer
+waits for the simulator if it isn't up yet, and reconnects automatically
+if you stop it to switch apps, so you can just leave it running.
 
 While an app is running, its real settings page is served too, at
 `http://127.0.0.1:8080/` (override with `MATRIXBOX_SIMULATOR_HTTP_PORT`).
 
-No app running yet? `matrixbox simulator` on its own draws an animated
-demo pattern, a quick way to check it's working.
+No app running yet? `matrixbox simulator --demo` draws an animated demo
+pattern instead, a quick way to check it's working.
 
 ## Panel sizes
 
