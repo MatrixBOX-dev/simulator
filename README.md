@@ -1,7 +1,7 @@
 # matrixbox-simulator
 
 [![CI](https://github.com/MatrixBOX-dev/simulator/actions/workflows/ci.yml/badge.svg)](https://github.com/MatrixBOX-dev/simulator/actions/workflows/ci.yml)
-![PyPI Version](https://img.shields.io/pypi/v/matrixbox)
+![PyPI Version](https://img.shields.io/pypi/v/matrixbox-simulator)
 
 A desktop simulator for [matrixbox][matrixbox], the [CircuitPython][circuitpython]
 app that drives an LED matrix on a Waveshare ESP32-S3-Zero. Runs an app's
