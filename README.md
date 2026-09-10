@@ -8,7 +8,7 @@ app that drives an LED matrix on a Waveshare ESP32-S3-Zero. Runs an app's
 real, unmodified code on your desktop Python interpreter and streams what
 it draws to a terminal renderer, no hardware needed.
 
-![demo](./asset/sim-image.png)
+![demo](https://raw.githubusercontent.com/MatrixBOX-dev/simulator/refs/heads/main/asset/sim-image.png)
 
 ## Installation
 
