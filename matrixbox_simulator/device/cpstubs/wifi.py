@@ -14,6 +14,11 @@ _LOCAL_IPV4_ADDRESS = (
 )
 
 
+class _ApInfo:
+    def __init__(self, rssi: int) -> None:
+        self.rssi = rssi
+
+
 class Radio:
     def __init__(self) -> None:
         self.connected: bool = True
@@ -22,6 +27,12 @@ class Radio:
         self.tx_power: float = 0.0
         self.ipv4_address: str | None = _LOCAL_IPV4_ADDRESS
         self.ipv4_address_ap: str | None = _LOCAL_IPV4_ADDRESS
+
+        # The sim has no real association to measure RSSI from. -50 dBm
+        # lands in matrixbox's own "4 of 5" signal-bar bracket (see
+        # web_interface._sig_bars) instead of the "no signal" 0 bars that
+        # an absent ap_info used to fall back to.
+        self.ap_info: _ApInfo | None = _ApInfo(rssi=-50)
 
     def connect(
         self, ssid: str, password: str, *, channel: int = 0, timeout: float = 15
