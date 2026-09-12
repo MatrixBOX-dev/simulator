@@ -105,7 +105,7 @@ class FramebufferDisplay:
         self, *, target_frames_per_second: int = 60, minimum_frames_per_second: int = 1
     ) -> None:
         group = self.root_group
-        if group is None or getattr(group, "hidden", False):
+        if group is None:
             return
 
         # Skip everything, pacing sleep included, when nothing's changed
@@ -127,7 +127,12 @@ class FramebufferDisplay:
             time.sleep(1.0 / _refresh_fps)
 
         canvas = bytearray(self.width * self.height * 3)
-        _composite(group, canvas, self.width, self.height, 0, 0)
+
+        # A hidden root group composites nothing, same as real hardware:
+        # refresh() still pushes a fresh (all-black) framebuffer rather
+        # than leaving whatever was last on screen in place.
+        if not getattr(group, "hidden", False):
+            _composite(group, canvas, self.width, self.height, 0, 0)
 
         # Some sizes ship with their panel physically mounted rotated in
         # the enclosure, which real firmware's own rotation default
