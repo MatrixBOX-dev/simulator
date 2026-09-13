@@ -499,13 +499,6 @@ def restart_process(reason: str = "to apply the new panel geometry") -> NoReturn
     )
 
 
-def _controls_hint() -> str:
-    return (
-        "'s'/'l' button, '+'/'-' refresh-fps, '['/']' gamma, 'z' cycle size, "
-        "'n' toggle wifi, 'r' reload (restarts)"
-    )
-
-
 def _cycle_size(settings_path: Path) -> NoReturn:
     # Matches by width/height rather than a saved "size" name, since real
     # settings have no such field either — just width/height/tiles. An
@@ -764,7 +757,6 @@ def _button_listener(
 
     thread = threading.Thread(target=listen, daemon=True)
     thread.start()
-    print(f"matrixbox-simulator: controls: {_controls_hint()}")
 
     try:
         yield

@@ -2,7 +2,7 @@
 glyph's foreground/background carries one pixel each, doubling vertical
 resolution relative to one-pixel-per-cell. Framed in a white border so the
 panel's edges are visible against an equally black terminal background,
-with an optional stats line underneath.
+with a stats line and a static controls reference underneath.
 
 Each frame is composed entirely off-screen: one Text buffer, with adjacent
 same-color pixels merged into single runs rather than one styled character
@@ -24,8 +24,24 @@ from matrixbox_simulator.term.wire import Frame, Stats
 Rgb = tuple[int, int, int]
 
 _BORDER_STYLE = Style(color="white")
-_STATS_STYLE = Style(color="bright_black")
+_STATS_STYLE = Style(color="white")
 _TILE_BORDER_STYLE = Style(color="grey50")
+_HEADER_STYLE = Style(color="white", bold=True)
+
+# Mirrors run_app._button_listener()'s own key handling — this is a
+# reference for a person watching the renderer, not something this
+# process itself listens for, so it has to be kept in sync by hand
+# rather than imported: the device process is a separate `matrixbox app`
+# invocation, very often in an entirely different terminal.
+_APP_CONTROLS = (
+    ("n", "toggle wifi on/off"),
+    ("s", "short button press"),
+    ("l", "long button press (usually exits the app)"),
+    ("r", "reload (restarts)"),
+    ("+/-", "refresh-fps"),
+    ("[/]", "gamma"),
+    ("z", "cycle panel size"),
+)
 
 
 class TerminalRenderer:
@@ -52,7 +68,13 @@ class TerminalRenderer:
 
         return self.show_tile_borders
 
-    def render(self, frame: Frame, stats: Stats | None) -> None:
+    def render(
+        self,
+        frame: Frame,
+        stats: Stats | None,
+        *,
+        waiting_message: str = "waiting for a connected app...",
+    ) -> None:
         text = Text()
 
         horizontal_border = "─" * frame.width
@@ -65,13 +87,26 @@ class TerminalRenderer:
 
         text.append("└" + horizontal_border + "┘\n", style=_BORDER_STYLE)
 
-        # Padded to the box's own width: this is the last thing printed
-        # each frame, with no trailing newline, so a shorter line here
-        # than last frame's (app name changed length, fps gained a digit,
-        # the tile-border toggle flipped) would otherwise leave stray
-        # leftover characters on screen with nothing to overwrite them.
-        stats_line = _format_stats_line(stats, self.show_tile_borders)
-        text.append(stats_line.ljust(len(horizontal_border) + 2), style=_STATS_STYLE)
+        # Padded to the box's own width: content here (app name, fps
+        # digits) varies in length frame to frame, and with no per-line
+        # clear between redraws, a shorter line than last frame's would
+        # otherwise leave stray leftover characters with nothing to
+        # overwrite them.
+        stats_line = _format_stats_line(stats, waiting_message)
+        text.append(
+            stats_line.ljust(len(horizontal_border) + 2) + "\n", style=_STATS_STYLE
+        )
+
+        # Always rendered, not just printed once at startup: this is the
+        # one screen region under this process's own full control every
+        # frame, so it's the one place a controls reminder can stay
+        # genuinely static instead of scrolling off under whatever this
+        # window's arbitrary log/print output does next. Same reasoning
+        # for including the *other* window's controls here too, not just
+        # this window's own 't' — a person watching the panel shouldn't
+        # have to go find that other terminal just to remember them.
+        text.append("\n")
+        text.append_text(_format_controls_block(self.show_tile_borders))
 
         self.console.control(Control.home())
         self.console.print(text, end="")
@@ -136,15 +171,46 @@ def _rgb(rgb: Rgb) -> Color:
     return Color.from_rgb(r, g, b)
 
 
-def _format_stats_line(stats: Stats | None, show_tile_borders: bool) -> str:
-    borders = f"borders (t): {'on' if show_tile_borders else 'off'}"
+def _format_stats_line(stats: Stats | None, waiting_message: str) -> str:
     if stats is None:
-        return borders
+        return waiting_message
 
     cpu = f"{stats.cpu_percent:.0f}%" if stats.cpu_percent is not None else "n/a"
     rss = f"{stats.rss_kb / 1024:.1f} MB" if stats.rss_kb is not None else "n/a"
 
-    return (
-        f"app: {stats.app}  fps: {stats.fps:.1f}  cpu: {cpu}  "
-        f"sim rss (peak): {rss}  {borders}"
+    return f"app: {stats.app}  fps: {stats.fps:.1f}  cpu: {cpu}  sim rss (peak): {rss}"
+
+
+# Shared by both lists in _format_controls_block, so "t" and every app
+# control key line up in the same column instead of the single-entry
+# simulator list getting its own, different spacing.
+_KEY_WIDTH = max(len("t"), max(len(key) for key, _ in _APP_CONTROLS))
+
+
+def _format_controls_block(show_tile_borders: bool) -> Text:
+    text = Text()
+    text.append("simulator controls (this window):\n", style=_HEADER_STYLE)
+    # Padded like the stats line above, for the same reason: "on" is
+    # shorter than "off", and this is the one line in an otherwise fully
+    # static block whose length can actually change between redraws.
+    state = "on" if show_tile_borders else "off"
+    border_line = f"  {'t'.ljust(_KEY_WIDTH)}  toggle borders [{state}]"
+    text.append(
+        border_line.ljust(len(f"  {'t'.ljust(_KEY_WIDTH)}  toggle borders [off]"))
+        + "\n",
+        style=_STATS_STYLE,
     )
+
+    text.append("\napp controls (the `matrixbox app` window):\n", style=_HEADER_STYLE)
+    lines = [
+        f"  {key.ljust(_KEY_WIDTH)}  {description}"
+        for key, description in _APP_CONTROLS
+    ]
+    # No trailing newline on the last one: render() prints this whole
+    # buffer with no newline of its own either, so the cursor is left at
+    # the end of this text, matching every other status message that
+    # follows it with its own leading "\n" rather than a blank one baked
+    # in here.
+    text.append("\n".join(lines), style=_STATS_STYLE)
+
+    return text
