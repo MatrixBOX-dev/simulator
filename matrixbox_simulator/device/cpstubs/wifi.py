@@ -53,3 +53,11 @@ class Radio:
 
 
 radio = Radio()
+
+
+def set_connected(value: bool) -> None:
+    # Flipped live from the sim's own controls (not app code) to test how
+    # an app behaves with no internet. ap_info drops out along with it,
+    # matching a real radio that's no longer associated with any AP.
+    radio.connected = value
+    radio.ap_info = _ApInfo(rssi=-50) if value else None

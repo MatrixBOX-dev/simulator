@@ -502,7 +502,7 @@ def restart_process(reason: str = "to apply the new panel geometry") -> NoReturn
 def _controls_hint() -> str:
     return (
         "'s'/'l' button, '+'/'-' refresh-fps, '['/']' gamma, 'z' cycle size, "
-        "'r' reload (restarts)"
+        "'n' toggle wifi, 'r' reload (restarts)"
     )
 
 
@@ -587,6 +587,19 @@ def _bump_gamma(direction: int) -> None:
 
     label = "off" if new == 1.0 else f"{new:.1f}"
     print(f"matrixbox-simulator: gamma now {label}")
+
+
+def _toggle_wifi() -> None:
+    # Same reaching-into-sys.modules trick as the gamma/refresh-fps bumps,
+    # to hit the exact wifi module instance the running app imported.
+    module = sys.modules.get("wifi")
+    if module is None:
+        print("matrixbox-simulator: nothing running yet to adjust")
+        return
+
+    new = not module.radio.connected
+    module.set_connected(new)
+    print(f"matrixbox-simulator: wifi now {'connected' if new else 'disconnected'}")
 
 
 def _run_kernel(
@@ -744,6 +757,8 @@ def _button_listener(
                 _bump_gamma(-1)
             elif char == "z" and cycle_size is not None:
                 cycle_size()
+            elif char == "n":
+                _toggle_wifi()
 
     thread = threading.Thread(target=listen, daemon=True)
     thread.start()
