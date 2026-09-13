@@ -15,9 +15,10 @@ _LOCAL_IPV4_ADDRESS = (
 
 # --no-wifi boots the radio already disconnected, for testing an app's
 # offline behavior from the very first frame rather than toggling it live
-# with 'n' after boot. connect() is a no-op (see below), so nothing an
-# app does on its own ever flips this back on — it stays offline for the
-# whole run, same as the live toggle would leave it.
+# with 'n' after boot. connect() refuses to succeed while disconnected
+# (see below), so nothing an app does on its own — including the wifi
+# setup page's own Connect button — ever flips this back on; it stays
+# offline for the whole run, same as the live toggle would leave it.
 _START_CONNECTED = os.environ.get("MATRIXBOX_SIMULATOR_NO_WIFI", "0") != "1"
 
 
@@ -56,7 +57,17 @@ class Radio:
     def connect(
         self, ssid: str, password: str, *, channel: int = 0, timeout: float = 15
     ) -> None:
-        pass
+        # The sim has no real SSID/password to validate against, so it
+        # can't tell a wrong password from a wrong network name the way
+        # real hardware's own error strings do (see matrixbox's own
+        # connect_to_network(), which maps those apart). While simulated
+        # as disconnected, every attempt just fails outright instead of
+        # silently faking success — matching there being no real network
+        # to associate with at all, and keeping matrixbox from writing a
+        # "connected" settings.txt for a connection that never really
+        # happened.
+        if not self.connected:
+            raise ConnectionError("simulator offline")
 
     def start_ap(self, ssid: str, *args: object, **kwargs: object) -> None:
         self.ap_active = True
