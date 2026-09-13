@@ -129,6 +129,9 @@ def _install_path_sandbox(root: Path) -> None:
     real_listdir = os.listdir
     real_remove = os.remove
     real_chdir = os.chdir
+    real_stat = os.stat
+    real_mkdir = os.mkdir
+    real_rmdir = os.rmdir
 
     def resolve(path: Any) -> Any:
         # Idempotent: a path already inside root (e.g. a real filesystem
@@ -158,11 +161,23 @@ def _install_path_sandbox(root: Path) -> None:
     def sandboxed_chdir(path: Any) -> None:
         return real_chdir(resolve(path))
 
+    def sandboxed_stat(path: Any, *args: Any, **kwargs: Any) -> object:
+        return real_stat(resolve(path), *args, **kwargs)
+
+    def sandboxed_mkdir(path: Any, *args: Any, **kwargs: Any) -> None:
+        return real_mkdir(resolve(path), *args, **kwargs)
+
+    def sandboxed_rmdir(path: Any, *args: Any, **kwargs: Any) -> None:
+        return real_rmdir(resolve(path), *args, **kwargs)
+
     builtins.open = sandboxed_open  # ty: ignore[invalid-assignment]
     os.rename = sandboxed_rename  # ty: ignore[invalid-assignment]
     os.listdir = sandboxed_listdir  # ty: ignore[invalid-assignment]
     os.remove = sandboxed_remove  # ty: ignore[invalid-assignment]
     os.chdir = sandboxed_chdir  # ty: ignore[invalid-assignment]
+    os.stat = sandboxed_stat  # ty: ignore[invalid-assignment]
+    os.mkdir = sandboxed_mkdir  # ty: ignore[invalid-assignment]
+    os.rmdir = sandboxed_rmdir  # ty: ignore[invalid-assignment]
 
 
 class _BytesLiteralWrapper(ast.NodeTransformer):
