@@ -8,6 +8,7 @@ real hardware would never send this.
 
 import struct
 import sys
+import threading
 import time
 from collections.abc import Callable
 
@@ -40,6 +41,14 @@ class FrameBridge:
         self._last_broadcast_time: float | None = None
         self._last_rgb: bytes | None = None
         self._smoothed_interval: float | None = None
+
+        # A frame the rate limiter dropped, waiting to be sent once its
+        # window reopens — see publish()'s comment on why a drop can't
+        # just be left dropped. Guarded by _lock since the flush runs on
+        # a Timer thread, not whatever thread called publish().
+        self._lock = threading.Lock()
+        self._pending: tuple[int, int, bytes] | None = None
+        self._deferred_timer: threading.Timer | None = None
 
         # Set by headless callers (screenshot mode) that need a composited
         # frame directly, without standing up a real renderer to decode it
@@ -80,28 +89,87 @@ class FrameBridge:
         if self._server is None:
             return
 
-        if rgb == self._last_rgb:
-            # Nothing actually changed since the last broadcast: real
-            # hardware wouldn't show anything different either. Some apps
-            # call refresh() many times per logical step as their own
-            # speed control, with identical content between calls —
-            # broadcasting each one anyway means paying real socket-write
-            # cost for frames carrying no new information.
+        with self._lock:
+            if rgb == self._last_rgb:
+                # Nothing actually changed since the last broadcast: real
+                # hardware wouldn't show anything different either. Some
+                # apps call refresh() many times per logical step as
+                # their own speed control, with identical content between
+                # calls — broadcasting each one anyway means paying real
+                # socket-write cost for frames carrying no new
+                # information.
+                return
+
+            now = time.monotonic()
+            last_broadcast_time = self._last_broadcast_time
+            if (
+                last_broadcast_time is not None
+                and now - last_broadcast_time < _MIN_PUBLISH_INTERVAL
+            ):
+                # Too soon to broadcast outright, but this can't just be
+                # dropped: real hardware has no such cap at all and would
+                # show exactly this. A burst of refresh() calls landing
+                # inside one rate-limit window (e.g. matrixbox's own
+                # clearscreen()+show_logo() pair on reconnect, or an app's
+                # own startup draw right after) has to still end with its
+                # true last frame reaching the panel once the window
+                # reopens, or the renderer is left stuck on an
+                # intermediate frame — often all-black — until something
+                # unrelated happens to call refresh() again.
+                self._defer(width, height, rgb, last_broadcast_time)
+                return
+
+            self._cancel_deferred_locked()
+            self._broadcast_locked(width, height, rgb, now)
+
+    def _defer(
+        self, width: int, height: int, rgb: bytes, last_broadcast_time: float
+    ) -> None:
+        # Only the newest pending frame matters: whatever several dropped
+        # refresh() calls in a row end up drawing, the *last* one is the
+        # only one real hardware would still be showing once its window
+        # reopens, so this coalesces to that instead of queuing every one.
+        self._pending = (width, height, rgb)
+        if self._deferred_timer is not None:
+            return  # already scheduled; it'll pick up the newer _pending
+
+        delay = max(
+            0.0, _MIN_PUBLISH_INTERVAL - (time.monotonic() - last_broadcast_time)
+        )
+        timer = threading.Timer(delay, self._flush_deferred)
+        timer.daemon = True
+        self._deferred_timer = timer
+        timer.start()
+
+    def _flush_deferred(self) -> None:
+        with self._lock:
+            pending = self._pending
+            self._pending = None
+            self._deferred_timer = None
+            if pending is None or pending[2] == self._last_rgb:
+                return
+
+            self._broadcast_locked(*pending, time.monotonic())
+
+    def _cancel_deferred_locked(self) -> None:
+        if self._deferred_timer is not None:
+            self._deferred_timer.cancel()
+            self._deferred_timer = None
+
+        self._pending = None
+
+    def _broadcast_locked(
+        self, width: int, height: int, rgb: bytes, now: float
+    ) -> None:
+        server = self._server
+        if server is None:
             return
 
         self._last_rgb = rgb
-
-        now = time.monotonic()
-        if (
-            self._last_broadcast_time is not None
-            and now - self._last_broadcast_time < _MIN_PUBLISH_INTERVAL
-        ):
-            return  # dropped: too soon since the last actual broadcast
-
         self._last_broadcast_time = now
 
         header = struct.pack("<BBHHBB", 0xF3, 1, width, height, 0, self._tiles)
-        self._server.broadcast(header + bytes(rgb), kind="frame")
+        server.broadcast(header + bytes(rgb), kind="frame")
 
         if self.on_publish is not None:
             self.on_publish(width, height, rgb)
