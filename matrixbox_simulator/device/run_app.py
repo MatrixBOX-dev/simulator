@@ -658,6 +658,8 @@ def _run_kernel(
 
     http_port = int(os.environ.get("MATRIXBOX_SIMULATOR_HTTP_PORT", "8080"))
     print(f"matrixbox-simulator: web UI at http://127.0.0.1:{http_port}/")
+    if args.no_wifi:
+        print("matrixbox-simulator: booting with wifi disconnected (--no-wifi)")
 
     main_path = staged_root / "main.py"
     os.chdir(staged_root)  # goes through tracked_chdir, seeds sys.path[0]
@@ -841,6 +843,15 @@ def build_parser(
             "try 1.8-2.8 and adjust live with '['/']'"
         ),
     )
+    parser.add_argument(
+        "--no-wifi",
+        action="store_true",
+        help=(
+            "boot with wifi already disconnected, to test an app's offline "
+            "behavior from the first frame rather than toggling it live "
+            "with 'n' after boot. Stays offline for the whole run"
+        ),
+    )
     return parser
 
 
@@ -872,6 +883,7 @@ def run(args: argparse.Namespace) -> None:
 
     os.environ["MATRIXBOX_SIMULATOR_REFRESH_FPS"] = str(args.refresh_fps)
     os.environ["MATRIXBOX_SIMULATOR_GAMMA"] = str(args.gamma)
+    os.environ["MATRIXBOX_SIMULATOR_NO_WIFI"] = "1" if args.no_wifi else "0"
 
     given = Path(args.app).expanduser()
     if given.is_dir() and _is_os_root(given.resolve()):

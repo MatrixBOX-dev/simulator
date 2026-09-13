@@ -13,6 +13,13 @@ _LOCAL_IPV4_ADDRESS = (
     f"127.0.0.1:{os.environ.get('MATRIXBOX_SIMULATOR_HTTP_PORT', '8080')}"
 )
 
+# --no-wifi boots the radio already disconnected, for testing an app's
+# offline behavior from the very first frame rather than toggling it live
+# with 'n' after boot. connect() is a no-op (see below), so nothing an
+# app does on its own ever flips this back on — it stays offline for the
+# whole run, same as the live toggle would leave it.
+_START_CONNECTED = os.environ.get("MATRIXBOX_SIMULATOR_NO_WIFI", "0") != "1"
+
 
 class _ApInfo:
     def __init__(self, rssi: int) -> None:
@@ -33,7 +40,7 @@ _FAKE_SCAN_RESULTS = [_Network(ssid="matrixbox-simulator", channel=1)]
 
 class Radio:
     def __init__(self) -> None:
-        self.connected: bool = True
+        self.connected: bool = _START_CONNECTED
         self.ap_active: bool = False
         self.mac_address: bytes = bytes([0x02, 0x00, 0x00, 0x45, 0x53, 0x50])
         self.tx_power: float = 0.0
@@ -44,7 +51,7 @@ class Radio:
         # lands in matrixbox's own "4 of 5" signal-bar bracket (see
         # web_interface._sig_bars) instead of the "no signal" 0 bars that
         # an absent ap_info used to fall back to.
-        self.ap_info: _ApInfo | None = _ApInfo(rssi=-50)
+        self.ap_info: _ApInfo | None = _ApInfo(rssi=-50) if _START_CONNECTED else None
 
     def connect(
         self, ssid: str, password: str, *, channel: int = 0, timeout: float = 15
