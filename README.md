@@ -104,11 +104,19 @@ terminal, not a redirected or piped one):
 - `+` / `-`: adjust refresh pacing live. See "Animation speed" below.
 - `[` / `]`: adjust color gamma live. See "Colors" below.
 - `z`: cycle through panel sizes live. See "Panel sizes" above.
+- `n`: toggle wifi on/off, to test how an app behaves offline. See
+  "Wifi" below.
 
 Typed into whichever terminal is running `matrixbox simulator` instead:
 
 - `t`: toggle a guide line at each panel seam (see "Panel sizes"). Off
-  by default; current state always shows in the stats line underneath.
+  by default.
+
+A reference for both sets of controls (plus `t`'s current state) is
+always shown under the panel in the `matrixbox simulator` window, since
+that's the one screen this tool fully redraws itself each frame — the
+`matrixbox app` terminal's own controls hint, printed once at startup,
+otherwise scrolls out of view under the app's own logs.
 
 ## Animation speed
 
@@ -151,6 +159,18 @@ leans on. Known-good values:
 | `screensaver` (aquarium) | 2.4       |
 
 For anything not listed, start around 5.0 and adjust live with `[`/`]`.
+
+## Wifi
+
+The sim's host machine is assumed to already have real network access,
+so `matrixbox app` starts connected by default and reports a fixed,
+reasonably strong signal — there's no real association to measure.
+
+To test how an app behaves with no internet: `--no-wifi` boots already
+disconnected and stays that way for the whole run (the wifi setup
+page's own Connect button fails outright rather than faking success,
+same as there being no real network for it to join), or toggle it live
+with `n`.
 
 ## Screenshots
 
