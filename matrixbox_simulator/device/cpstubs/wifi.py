@@ -19,6 +19,18 @@ class _ApInfo:
         self.rssi = rssi
 
 
+class _Network:
+    def __init__(self, ssid: str, channel: int) -> None:
+        self.ssid = ssid
+        self.channel = channel
+
+
+# The sim has no way to scan real nearby networks portably, so the wifi
+# setup page (matrixbox's own connect_to_wifi(), reached by disconnecting)
+# is offered this fixed stand-in list instead of a real scan result.
+_FAKE_SCAN_RESULTS = [_Network(ssid="matrixbox-simulator", channel=1)]
+
+
 class Radio:
     def __init__(self) -> None:
         self.connected: bool = True
@@ -49,6 +61,14 @@ class Radio:
         pass
 
     def set_ipv4_address(self, **kwargs: object) -> None:
+        pass
+
+    def start_scanning_networks(
+        self, *, start_channel: int = 1, stop_channel: int = 11
+    ) -> list[_Network]:
+        return _FAKE_SCAN_RESULTS
+
+    def stop_scanning_networks(self) -> None:
         pass
 
 
