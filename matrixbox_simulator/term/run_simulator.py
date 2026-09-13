@@ -210,9 +210,13 @@ def run_connected(
 ) -> None:
     # Shown before any real frame has arrived, including while there's no
     # sim running at all yet, so the panel's bounds are always visible
-    # rather than depending on server round-trip timing.
+    # rather than depending on server round-trip timing. The stats line's
+    # own "waiting for frame server..." text covers the same ground a
+    # separate stderr print used to, so there's only ever one such
+    # message on screen instead of both stacked underneath each other.
     placeholder = Frame.blank(width, height, tiles=tiles)
-    renderer.render(placeholder, None)
+    waiting_message = f"waiting for frame server at {url}..."
+    renderer.render(placeholder, None, waiting_message=waiting_message)
 
     while is_running():
         source = connect_with_retry(url, is_running)
@@ -247,25 +251,18 @@ def run_connected(
 
         if is_running():
             renderer.clear()
-            renderer.render(placeholder, None)
+            renderer.render(placeholder, None, waiting_message=waiting_message)
 
 
 def connect_with_retry(url: str, is_running: Callable[[], bool]) -> WsSource | None:
     """Retries WsSource(url) until it succeeds or is_running() goes false.
-    Covers both a server that hasn't started yet and one that restarted."""
-    announced = False
-
+    Covers both a server that hasn't started yet and one that restarted.
+    No status print of its own: the placeholder box's own stats line
+    already says as much for as long as this is retrying."""
     while is_running():
         try:
             return WsSource(url)
         except Exception:
-            if not announced:
-                print(
-                    f"\nmatrixbox-simulator: waiting for frame server at {url}...",
-                    file=sys.stderr,
-                )
-                announced = True
-
             time.sleep(RECONNECT_DELAY_SECONDS)
 
     return None
