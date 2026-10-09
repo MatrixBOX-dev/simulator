@@ -14,6 +14,7 @@ import argparse
 import io
 import json
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -25,6 +26,8 @@ from PIL import Image
 
 from matrixbox_simulator.device import frame_bridge, run_app
 from matrixbox_simulator.sizes import ROTATION_OVERRIDES, SIZE_PRESETS
+
+SCREENSHOT_STYLES = ("pixels", "panel", "device")
 
 
 def build_parser(
@@ -84,7 +87,16 @@ def build_parser(
         type=int,
         default=8,
         help="pixel scale factor for the output PNG: each device pixel is "
-        "drawn as an NxN block (default 8)",
+        "drawn as an NxN block, or an N pixel LED for --style panel/device "
+        "(default 8)",
+    )
+    parser.add_argument(
+        "--style",
+        choices=SCREENSHOT_STYLES,
+        default="pixels",
+        help="pixels: the raw frame, scaled up (default). panel: glowing "
+        "LEDs in a dark housing, like the web renderer. device: the web "
+        "renderer's 3D device mockup. panel and device need Playwright",
     )
     parser.add_argument(
         "-o",
@@ -224,6 +236,38 @@ def _write_screenshot(
     path.write_bytes(buffer.getvalue())
 
 
+def _write_web_screenshot(
+    path: Path, width: int, height: int, rgb: bytes, *, style: str, scale: int
+) -> None:
+    # A separate, unsandboxed process: this one has open()/stat() and
+    # friends redirected into the app's sandbox, which a browser driver
+    # can't run under. -P keeps the staged checkout's own modules (it has
+    # a code.py, for one) from shadowing the standard library there.
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-P",
+            "-m",
+            "matrixbox_simulator.web.capture",
+            "--style",
+            style,
+            "--width",
+            str(width),
+            "--height",
+            str(height),
+            "--led-size",
+            str(scale),
+            "--output",
+            str(path),
+        ],
+        input=rgb,
+        cwd=path.parent,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise SystemExit(f"couldn't render the {style} screenshot")
+
+
 def run(args: argparse.Namespace) -> None:
     args.geometry_explicit = (
         args.size is not None or args.width is not None or args.height is not None
@@ -355,10 +399,17 @@ def run(args: argparse.Namespace) -> None:
             f"{app_dir.name} never drew a frame within {args.timeout:.1f}s"
         )
 
-    _write_screenshot(output, width, height, rgb, scale=args.scale)
+    if args.style == "pixels":
+        _write_screenshot(output, width, height, rgb, scale=args.scale)
+    else:
+        _write_web_screenshot(
+            output, width, height, rgb, style=args.style, scale=args.scale
+        )
+
     print(
         f"matrixbox-simulator: wrote {output} ({width}x{height}, "
-        f"{count} frame{'s' if count != 1 else ''} drawn, {args.scale}x scale)"
+        f"{count} frame{'s' if count != 1 else ''} drawn, {args.style} style, "
+        f"{args.scale}x scale)"
     )
 
 
