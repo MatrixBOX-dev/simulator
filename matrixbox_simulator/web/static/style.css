@@ -45,6 +45,23 @@ body {
   font-size: 14px;
 }
 
+body.capture {
+  grid-template-rows: 1fr;
+}
+
+body.capture-panel {
+  background: transparent;
+}
+
+.capture .toolbar,
+.capture .footer {
+  display: none;
+}
+
+.capture .panel-view .leds {
+  filter: none;
+}
+
 [hidden] {
   display: none !important;
 }

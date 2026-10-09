@@ -435,6 +435,10 @@ class CableRope {
     this.restingFrames = 0;
   }
 
+  settled() {
+    return this.points.length > 0 && !this.running;
+  }
+
   start() {
     this.points = [];
     this.endY = 0;
@@ -701,8 +705,11 @@ class SimulatorPage {
     this.viewButtons = document.querySelectorAll("[data-view]");
     this.drawPending = false;
     this.lastFrameSize = "";
-    this.view =
-      new URLSearchParams(window.location.search).get("view") ?? this.preferences.read("view", "panel");
+    const params = new URLSearchParams(window.location.search);
+    this.view = params.get("view") ?? this.preferences.read("view", "panel");
+    // Screenshot mode: just the panel or device at a fixed LED size, no
+    // page chrome, flagging when it's safe to capture.
+    this.capture = params.get("capture") === "1" ? { ledCssSize: Number(params.get("led")) || 8 } : null;
 
     this.renderer.showSeams = this.preferences.read("seams", "off") === "on";
     this.seamsToggle.checked = this.renderer.showSeams;
@@ -710,6 +717,56 @@ class SimulatorPage {
     this.bindControls();
     this.setView(this.view);
     this.connect();
+    if (this.capture) {
+      this.prepareCapture();
+    }
+  }
+
+  prepareCapture() {
+    document.body.classList.add("capture", `capture-${this.view}`);
+    window.matrixboxCaptureBounds = () => this.captureBounds();
+
+    const markReadyOnceSettled = () => {
+      const drawn = this.renderer.frame && this.renderer.ledSize;
+      if (drawn && (this.view !== "device" || this.cable.settled())) {
+        document.body.dataset.ready = "true";
+        return;
+      }
+
+      window.requestAnimationFrame(markReadyOnceSettled);
+    };
+    window.requestAnimationFrame(markReadyOnceSettled);
+  }
+
+  // The region worth keeping: the panel itself, or the device with a
+  // little room around it, leaving the cable to run off the edge.
+  captureBounds() {
+    const elements =
+      this.view === "device"
+        ? document.querySelectorAll("#box .face, #plug .plug-side, #device-button .cylinder-top")
+        : [this.renderer.canvas];
+    const margin = this.view === "device" ? this.capture.ledCssSize * 5 : 0;
+    let left = Infinity;
+    let top = Infinity;
+    let right = -Infinity;
+    let bottom = -Infinity;
+    for (const element of elements) {
+      const rect = element.getBoundingClientRect();
+      left = Math.min(left, rect.left);
+      top = Math.min(top, rect.top);
+      right = Math.max(right, rect.right);
+      bottom = Math.max(bottom, rect.bottom);
+    }
+
+    const x = Math.max(0, Math.floor(left - margin));
+    const y = Math.max(0, Math.floor(top - margin));
+
+    return {
+      x,
+      y,
+      width: Math.min(window.innerWidth, Math.ceil(right + margin)) - x,
+      height: Math.min(window.innerHeight, Math.ceil(bottom + margin)) - y,
+    };
   }
 
   renderAppControls() {
@@ -784,7 +841,8 @@ class SimulatorPage {
       const enclosureLeds = DEVICE_BEZEL_LEDS * 2 + DEVICE_DEPTH_LEDS;
       const ledsWide = frame.width + enclosureLeds;
       const ledsHigh = frame.height + enclosureLeds;
-      const ledCssSize = Math.min((bounds.width * 0.86) / ledsWide, (bounds.height * 0.8) / ledsHigh);
+      const ledCssSize =
+        this.capture?.ledCssSize ?? Math.min((bounds.width * 0.86) / ledsWide, (bounds.height * 0.8) / ledsHigh);
       // A hair over, so rounding down to whole device pixels lands on it.
       this.renderer.layout(frame.width * ledCssSize + 0.01, frame.height * ledCssSize + 0.01);
       const canvas = this.renderer.canvas;
@@ -794,6 +852,10 @@ class SimulatorPage {
         this.renderer.cssLedSize(),
       );
       this.cable.start();
+    } else if (this.capture) {
+      const housing = PANEL_HOUSING_LEDS * 2;
+      const led = this.capture.ledCssSize;
+      this.renderer.layout((frame.width + housing) * led + 0.01, (frame.height + housing) * led + 0.01);
     } else {
       this.renderer.layout(bounds.width - 32, bounds.height - 32);
     }

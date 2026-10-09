@@ -224,6 +224,23 @@ non-zero with the error printed. `--scale <n>` sets the output PNG's
 pixel scale factor (default 8). `--size` / `--width` / `--height` pick
 the panel size, same as `matrixbox app`.
 
+`--style` picks how the frame is drawn:
+
+- `pixels` (default): the raw frame, each pixel an NxN block.
+- `panel`: glowing round LEDs in a dark housing, on a transparent
+  background, exactly like the browser renderer's panel view.
+- `device`: the browser renderer's device mockup, cropped to the device.
+
+```sh
+matrixbox screenshot /path/to/matrixbox/apps/clock --style device -o clock.png
+```
+
+`panel` and `device` render through the real web page in a headless
+browser, so they need [Playwright][playwright]
+(`pip install 'matrixbox-simulator[screenshot]'`). An installed Chrome is
+used if there is one, otherwise run `playwright install chromium` once.
+For these, `--scale` is the size of one LED in pixels.
+
 ## Sandbox
 
 Every `matrixbox app`/`screenshot` run stages a fresh copy of the
@@ -274,3 +291,4 @@ https://github.com/user-attachments/assets/d0655003-ce85-4c79-b668-5602e9f14155
 [matrixbox-source]: https://github.com/MatrixBOX-dev/matrixbox
 [circuitpython]: https://circuitpython.org/
 [uv]: https://docs.astral.sh/uv/
+[playwright]: https://playwright.dev/python/
