@@ -2,12 +2,12 @@
 
 Usage:
 
-    matrixbox simulator
+    matrixbox simulator terminal
 
 Connects to ws://127.0.0.1:9191 by default; --connect overrides that.
 No simulator running? --demo draws an animated demo pattern instead:
 
-    matrixbox simulator --demo
+    matrixbox simulator terminal --demo
 """
 
 import argparse

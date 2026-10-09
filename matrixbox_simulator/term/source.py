@@ -34,6 +34,19 @@ class WsSource:
         self._ws = websocket.create_connection(url, timeout=_RECV_TIMEOUT_SECONDS)
 
     def next_frame(self) -> "Idle | Disconnected | wire.Frame | wire.Stats":
+        message = self.next_message()
+        if not isinstance(message, bytes):
+            return message
+
+        try:
+            return wire.decode(message)
+        except wire.DecodeError as err:
+            print(f"dropping malformed message: {err}", file=sys.stderr)
+            return IDLE
+
+    def next_message(self) -> "Idle | Disconnected | bytes":
+        """Like next_frame(), but hands back the still-encoded message, for
+        callers that only forward it on."""
         try:
             opcode, data = self._ws.recv_data()
         except websocket.WebSocketTimeoutException:
@@ -47,11 +60,13 @@ class WsSource:
         if opcode != websocket.ABNF.OPCODE_BINARY:
             return IDLE
 
+        return data
+
+    def send_text(self, message: str) -> None:
         try:
-            return wire.decode(data)
-        except wire.DecodeError as err:
-            print(f"dropping malformed message: {err}", file=sys.stderr)
-            return IDLE
+            self._ws.send(message)
+        except Exception as err:
+            print(f"websocket error: {err}", file=sys.stderr)
 
     def close(self) -> None:
         try:

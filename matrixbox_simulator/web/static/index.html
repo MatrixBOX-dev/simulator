@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>matrixbox simulator</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="toolbar">
+    <div class="brand">
+      <span class="brand-name">matrixbox</span>
+      <span id="connection" class="connection" data-connected="false">connecting...</span>
+    </div>
+    <div class="toggles">
+      <div class="segmented" role="group" aria-label="View">
+        <button type="button" data-view="panel">Panel</button>
+        <button type="button" data-view="device">Device</button>
+      </div>
+      <label class="switch">
+        <input id="seams" type="checkbox">
+        <span>Seams</span>
+      </label>
+    </div>
+  </header>
+
+  <main id="stage" class="stage">
+    <div id="panel-view" class="panel-view"></div>
+
+    <div id="device-view" class="device-view" hidden>
+      <svg id="cable" class="cable" aria-hidden="true">
+        <path class="cable-shade"></path>
+        <path class="cable-body"></path>
+        <path class="cable-highlight"></path>
+      </svg>
+      <div id="scene" class="scene" title="Drag to rotate, double-click to reset">
+        <div id="box" class="box">
+          <div class="face front">
+            <div id="device-screen" class="screen"></div>
+          </div>
+          <div class="face back"></div>
+          <div class="face top">
+            <div id="device-button" class="button"></div>
+          </div>
+          <div class="face bottom"></div>
+          <div class="floor-shadow"></div>
+          <div class="face left">
+            <div class="port port-upper"></div>
+            <div class="port port-lower"></div>
+            <div id="plug" class="plug"></div>
+          </div>
+          <div class="face right"></div>
+        </div>
+      </div>
+    </div>
+
+    <canvas id="leds" class="leds"></canvas>
+  </main>
+
+  <footer class="footer">
+    <div id="stats" class="stats">waiting for a connected app...</div>
+    <div class="controls">
+      <section>
+        <h2>This page</h2>
+        <dl>
+          <dt>v</dt><dd>switch panel / device view</dd>
+          <dt>t</dt><dd>toggle panel seams</dd>
+          <dt>drag</dt><dd>rotate the device, double-click resets</dd>
+          <dt>click</dt><dd>the device's button: click for a short press, hold for a long one</dd>
+        </dl>
+      </section>
+      <section>
+        <h2>App (here, or in the <code>matrixbox app</code> terminal)</h2>
+        <dl id="app-controls"></dl>
+      </section>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

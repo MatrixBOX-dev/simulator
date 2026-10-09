@@ -6,9 +6,9 @@
 A desktop simulator for [matrixbox][matrixbox], the [CircuitPython][circuitpython]
 app that drives an LED matrix on a Waveshare ESP32-S3-Zero. Runs an app's
 real, unmodified code on your desktop Python interpreter and streams what
-it draws to a terminal renderer, no hardware needed.
+it draws to a browser (or terminal) renderer, no hardware needed.
 
-![demo](https://raw.githubusercontent.com/MatrixBOX-dev/simulator/refs/heads/main/asset/sim-image.png)
+![demo](https://raw.githubusercontent.com/MatrixBOX-dev/simulator/refs/heads/main/asset/sim-image-web.png)
 
 ## Installation
 
@@ -50,8 +50,17 @@ Terminal 2, watch it:
 matrixbox simulator
 ```
 
-Connects to `ws://127.0.0.1:9191` by default, matching `matrixbox app`'s
-own default port — use `--connect <url>` if you changed it. The renderer
+and open `http://127.0.0.1:8081/` (`--open` does that for you, `--port`
+picks another port). The panel is drawn as round, glowing LEDs, either
+flat or mounted in a mock enclosure you can drag around to rotate.
+
+Prefer staying in the terminal? `matrixbox simulator terminal` draws it
+with half-block characters instead. `matrixbox simulator web` is the same
+as leaving the renderer out.
+
+Either one connects to `ws://127.0.0.1:9191` by default, matching
+`matrixbox app`'s own default port — use `--connect <url>` if you changed
+it. The renderer
 waits for the simulator if it isn't up yet, and reconnects automatically
 if you stop it to switch apps, so you can just leave it running.
 
@@ -85,7 +94,8 @@ reboots whenever it changes, since the wiring can't reconfigure live.
 This sim does the same: changing width/height from the settings UI, or
 `z` cycling through sizes from the `matrixbox app` terminal, both reboot
 the process. Whatever an app already saved survives the restart either
-way.
+way, and it boots straight back into whichever app was running rather
+than the home menu.
 
 Selecting XL also rotates the panel 180°, matching real firmware — it
 doesn't reset the rotation back when you switch away from XL either,
@@ -107,16 +117,27 @@ terminal, not a redirected or piped one):
 - `n`: toggle wifi on/off, to test how an app behaves offline. See
   "Wifi" below.
 
-Typed into whichever terminal is running `matrixbox simulator` instead:
+The same keys also work typed into the simulator page in the browser,
+which passes them on to the app. On the device mockup you can also use
+the button on top: a click is a short press, holding it past 0.8 seconds
+a long one, just like the real button. A click always registers, even
+when an app only checks the button now and then.
 
+Only for the browser page itself:
+
+- `v`: switch between the flat panel and the device mockup.
 - `t`: toggle a guide line at each panel seam (see "Panel sizes"). Off
   by default.
+- Drag the device to rotate it, double-click to reset the angle.
 
-A reference for both sets of controls (plus `t`'s current state) is
-always shown under the panel in the `matrixbox simulator` window, since
-that's the one screen this tool fully redraws itself each frame — the
-`matrixbox app` terminal's own controls hint, printed once at startup,
-otherwise scrolls out of view under the app's own logs.
+Or, with `matrixbox simulator terminal`, typed into its terminal:
+
+- `t`: toggle the seam guide lines, as above.
+
+A reference for both sets of controls is always shown under the panel,
+in the browser and in the `matrixbox simulator terminal` window alike —
+the `matrixbox app` terminal's own controls hint, printed once at
+startup, otherwise scrolls out of view under the app's own logs.
 
 ## Animation speed
 
@@ -244,6 +265,10 @@ uv run ruff format .  # format
 uv run ruff check .   # lint and fix
 uv run ty check .     # type check
 ```
+
+## Demo
+
+https://github.com/user-attachments/assets/d0655003-ce85-4c79-b668-5602e9f14155
 
 [matrixbox]: https://www.matrixbox.app
 [matrixbox-source]: https://github.com/MatrixBOX-dev/matrixbox
