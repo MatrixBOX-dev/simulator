@@ -398,11 +398,12 @@ def _seed_settings(
     # (ssid, brightness, ...) on a previous run, and those carry over the
     # same way they would on real hardware.
     #
-    # app_name is only set when launched with a single app to autostart.
-    # Launched against a full checkout instead, autostart is cleared: a
-    # plain root boot always lands on the home menu, regardless of
-    # whatever an earlier single-app launch (or a previous root boot's
-    # own in-UI app pick) left saved here — unlike real firmware, where
+    # app_name is only set when launched with a single app to autostart,
+    # or when an internal restart is resuming whatever was running.
+    # Otherwise autostart is cleared: a fresh root boot always lands on
+    # the home menu, regardless of whatever an earlier single-app launch
+    # (or a previous root boot's own in-UI app pick) left saved here —
+    # unlike real firmware, where
     # autostart is a sticky user preference, this is a dev sandbox and a
     # stale autostart from a different, unrelated launch shouldn't leak
     # into the next one.
@@ -486,6 +487,29 @@ def _strip_geometry_flags(argv: list[str]) -> list[str]:
     return result
 
 
+# Carries whichever app was on screen across an internal restart, so a
+# size change or reload lands back in it rather than on the home menu.
+# An environment variable, since that's all that survives os.execv.
+RESUME_APP_ENV = "MATRIXBOX_SIMULATOR_RESUME_APP"
+
+
+def running_app_name() -> str | None:
+    # The kernel's own record of what it launched, kept current across
+    # every way of switching apps (button, web UI, screensaver).
+    module = sys.modules.get("load_settings")
+    running = getattr(module, "app_running", None)
+
+    return running if isinstance(running, str) and running else None
+
+
+def boot_app_name(app_dir: Path | None) -> str | None:
+    """The app to autostart on this boot: whatever was running before an
+    internal restart, otherwise the one launched directly, if any."""
+    resumed = os.environ.pop(RESUME_APP_ENV, None)
+
+    return resumed or (app_dir.name if app_dir is not None else None)
+
+
 def restart_process(reason: str = "to apply the new panel geometry") -> NoReturn:
     # Real hardware only ever reads panel geometry at boot, and reboots
     # whenever it changes — pins and tile count can't reconfigure live.
@@ -502,6 +526,12 @@ def restart_process(reason: str = "to apply the new panel geometry") -> NoReturn
     # Re-enter via cli.py, not this module directly: sys.argv[1:] already
     # starts with the "app" subcommand token cli.py's parser expects, which
     # this module's own parser would instead misread as the app argument.
+    running = running_app_name()
+    if running is not None:
+        os.environ[RESUME_APP_ENV] = running
+    else:
+        os.environ.pop(RESUME_APP_ENV, None)
+
     print(f"matrixbox-simulator: restarting {reason}...")
     os.execv(
         sys.executable,
@@ -610,6 +640,61 @@ def _toggle_wifi() -> None:
     print(f"matrixbox-simulator: wifi now {'connected' if new else 'disconnected'}")
 
 
+# One name per thing a person can do to the running app, shared by the
+# terminal's own keys and controls a renderer sends over the frame server.
+CONTROL_KEYS: dict[str, str] = {
+    "s": "short_press",
+    "l": "long_press",
+    "r": "reload",
+    "+": "refresh_fps_up",
+    "-": "refresh_fps_down",
+    "]": "gamma_up",
+    "[": "gamma_down",
+    "z": "cycle_size",
+    "n": "toggle_wifi",
+}
+
+
+def handle_control(name: str, cycle_size: Callable[[], None] | None = None) -> None:
+    if name == "short_press":
+        button_input.press(0.2)
+        print("matrixbox-simulator: button, short press")
+    elif name == "long_press":
+        button_input.press(2.2)
+        print("matrixbox-simulator: button, long press")
+    elif name == "button_down":
+        button_input.hold()
+    elif name == "button_up":
+        button_input.release()
+    elif name == "reload":
+        restart_process(reason="to reload app and core code")
+    elif name == "refresh_fps_up":
+        _bump_refresh_fps(1)
+    elif name == "refresh_fps_down":
+        _bump_refresh_fps(-1)
+    elif name == "gamma_up":
+        _bump_gamma(1)
+    elif name == "gamma_down":
+        _bump_gamma(-1)
+    elif name == "cycle_size" and cycle_size is not None:
+        cycle_size()
+    elif name == "toggle_wifi":
+        _toggle_wifi()
+    else:
+        print(f"matrixbox-simulator: ignoring unknown control {name!r}")
+
+
+def handle_command(message: str, cycle_size: Callable[[], None] | None = None) -> None:
+    """Runs a control a renderer sent, as {"control": "<name>"}."""
+    try:
+        name = json.loads(message)["control"]
+    except (ValueError, KeyError, TypeError):
+        print(f"matrixbox-simulator: ignoring malformed command {message!r}")
+        return
+
+    handle_control(str(name), cycle_size)
+
+
 def _run_kernel(
     framework_root: Path, args: argparse.Namespace, app_dir: Path | None = None
 ) -> None:
@@ -623,11 +708,12 @@ def _run_kernel(
     _install_path_sandbox(staged_root)
     _install_chdir_path_tracking()
     _install_lenient_bytes_import_hook(staged_root)
+    boot_app = boot_app_name(app_dir)
     _seed_settings(
         staged_root,
         args.width,
         args.height,
-        app_name=app_dir.name if app_dir is not None else None,
+        app_name=boot_app,
         overwrite=args.geometry_explicit,
         rotation=args.rotation_override,
     )
@@ -637,7 +723,14 @@ def _run_kernel(
     sys.path.insert(0, str(staged_root / "lib"))
     sys.path.insert(0, str(STUB_DIR))
 
-    frame_bridge.bridge.start(args.ws_host, args.ws_port)
+    def cycle_size() -> NoReturn:
+        _cycle_size(staged_root / "settings.txt")
+
+    frame_bridge.bridge.start(
+        args.ws_host,
+        args.ws_port,
+        on_command=lambda message: handle_command(message, cycle_size),
+    )
     # Read back rather than trusting the launch values directly: after a
     # restart triggered by a settings-UI change or a size cycle, these
     # are whatever's actually now saved, which can differ from launch.
@@ -657,6 +750,12 @@ def _run_kernel(
             f"({final_width}x{final_height}) via {framework_root.name}'s "
             "own kernel (autostart)"
         )
+    elif boot_app is not None:
+        print(
+            f"matrixbox-simulator: running {framework_root} "
+            f"({final_width}x{final_height}) via its own kernel, "
+            f"resuming {boot_app!r}"
+        )
     else:
         print(
             f"matrixbox-simulator: running {framework_root} "
@@ -672,9 +771,6 @@ def _run_kernel(
     main_path = staged_root / "main.py"
     os.chdir(staged_root)  # goes through tracked_chdir, seeds sys.path[0]
     source = main_path.read_text()
-
-    def cycle_size() -> NoReturn:
-        _cycle_size(staged_root / "settings.txt")
 
     with _button_listener(cycle_size=cycle_size):
         try:
@@ -748,27 +844,9 @@ def _button_listener(
             if not ready:
                 continue
 
-            char = sys.stdin.read(1)
-            if char == "s":
-                button_input.press(0.2)
-                print("matrixbox-simulator: button, short press")
-            elif char == "l":
-                button_input.press(2.2)
-                print("matrixbox-simulator: button, long press")
-            elif char == "r":
-                restart_process(reason="to reload app and core code")
-            elif char == "+":
-                _bump_refresh_fps(1)
-            elif char == "-":
-                _bump_refresh_fps(-1)
-            elif char == "]":
-                _bump_gamma(1)
-            elif char == "[":
-                _bump_gamma(-1)
-            elif char == "z" and cycle_size is not None:
-                cycle_size()
-            elif char == "n":
-                _toggle_wifi()
+            control = CONTROL_KEYS.get(sys.stdin.read(1))
+            if control is not None:
+                handle_control(control, cycle_size)
 
     thread = threading.Thread(target=listen, daemon=True)
     thread.start()

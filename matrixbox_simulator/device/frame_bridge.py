@@ -55,9 +55,14 @@ class FrameBridge:
         # back off the wire.
         self.on_publish: Callable[[int, int, bytes], None] | None = None
 
-    def start(self, host: str = "127.0.0.1", port: int = 9191) -> wsserver.FrameServer:
+    def start(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 9191,
+        on_command: Callable[[str], None] | None = None,
+    ) -> wsserver.FrameServer:
         if self._server is None:
-            self._server = wsserver.FrameServer(host, port)
+            self._server = wsserver.FrameServer(host, port, on_command=on_command)
 
         return self._server
 

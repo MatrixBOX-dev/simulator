@@ -1,5 +1,6 @@
 """Decodes the binary wire messages the frame server sends: Frame (pixel
-data) and Stats (app name, FPS, CPU load, memory).
+data) and Stats (app name, FPS, CPU load, memory). Also encodes them, for
+synthetic sources that have to speak the same protocol as a real app.
 """
 
 from __future__ import annotations
@@ -62,6 +63,37 @@ def decode(data: bytes) -> Frame | Stats:
         return _decode_stats(data)
 
     raise DecodeError(f"bad magic byte: {magic:#x}")
+
+
+def encode_frame(frame: Frame) -> bytes:
+    header = struct.pack(
+        "<BBHHBB",
+        _FRAME_MAGIC,
+        _VERSION,
+        frame.width,
+        frame.height,
+        _FORMAT_RGB888,
+        frame.tiles,
+    )
+
+    return header + frame.pixels
+
+
+def encode_stats(stats: Stats) -> bytes:
+    flags = 0
+    body = bytearray(struct.pack("<f", stats.fps))
+    if stats.cpu_percent is not None:
+        flags |= _STATS_HAS_CPU_PERCENT
+        body += struct.pack("<f", stats.cpu_percent)
+
+    if stats.rss_kb is not None:
+        flags |= _STATS_HAS_RSS_KB
+        body += struct.pack("<I", stats.rss_kb)
+
+    app_bytes = stats.app.encode("utf-8")[:255]
+    header = struct.pack("<BBBB", _STATS_MAGIC, _VERSION, flags, len(app_bytes))
+
+    return header + app_bytes + bytes(body)
 
 
 def _decode_frame(data: bytes) -> Frame:

@@ -1,0 +1,448 @@
+:root {
+  color-scheme: light dark;
+  --page: #ececef;
+  --page-edge: #cfcfd5;
+  --ink: #26262c;
+  --ink-muted: #6b6b75;
+  --chrome: rgba(255, 255, 255, 0.7);
+  --chrome-border: rgba(0, 0, 0, 0.08);
+  --accent: #e08a1e;
+  --live: #2f9e5b;
+  --offline: #b54848;
+  --floor-shadow: rgba(0, 0, 0, 0.45);
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #1d1d22;
+    --page-edge: #0c0c0f;
+    --ink: #e6e6ea;
+    --ink-muted: #8d8d98;
+    --chrome: rgba(30, 30, 36, 0.75);
+    --chrome-border: rgba(255, 255, 255, 0.08);
+    --floor-shadow: rgba(0, 0, 0, 0.8);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  background: radial-gradient(ellipse at 50% 40%, var(--page) 35%, var(--page-edge) 100%);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14px;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+}
+
+.brand {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.brand-name {
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.connection {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: #fff;
+  background: var(--offline);
+}
+
+.connection[data-connected="true"] {
+  background: var(--live);
+}
+
+.toggles {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.segmented {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--chrome-border);
+  border-radius: 8px;
+  background: var(--chrome);
+}
+
+.segmented button {
+  padding: 4px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.segmented button[aria-pressed="true"] {
+  background: var(--accent);
+  color: #fff;
+}
+
+.switch {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+
+.switch input {
+  accent-color: var(--accent);
+}
+
+.stage {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.panel-view,
+.device-view {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+.leds {
+  display: block;
+  image-rendering: pixelated;
+}
+
+.panel-view .leds {
+  filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.35));
+}
+
+/* Device mockup: a CSS 3D box sized from JS in LED units. */
+
+.scene {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  perspective: 2400px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.scene.dragging {
+  cursor: grabbing;
+}
+
+.box {
+  --box-width: 600px;
+  --box-height: 200px;
+  --box-depth: 100px;
+  --bezel: 20px;
+  --led: 4px;
+  --rotate-x: -16deg;
+  --rotate-y: 24deg;
+
+  position: relative;
+  width: var(--box-width);
+  height: var(--box-height);
+  transform-style: preserve-3d;
+  transform: rotateX(var(--rotate-x)) rotateY(var(--rotate-y));
+}
+
+.face {
+  position: absolute;
+  backface-visibility: hidden;
+}
+
+.front,
+.back {
+  inset: 0;
+}
+
+.front {
+  display: grid;
+  place-items: center;
+  border-radius: calc(var(--led) * 0.6);
+  background: linear-gradient(175deg, #232327 0%, #141416 55%, #0f0f11 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  transform: translateZ(calc(var(--box-depth) / 2));
+}
+
+.screen {
+  position: relative;
+  line-height: 0;
+  background: #070709;
+}
+
+/* The panel sits slightly recessed behind the bezel. */
+.screen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow:
+    inset 0 calc(var(--led) * 0.8) calc(var(--led) * 1.2) rgba(0, 0, 0, 0.7),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.9);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.035) 0%, transparent 45%);
+}
+
+.back {
+  background: #0e0e10;
+  transform: rotateY(180deg) translateZ(calc(var(--box-depth) / 2));
+}
+
+.top,
+.bottom {
+  left: 0;
+  top: calc((var(--box-height) - var(--box-depth)) / 2);
+  width: var(--box-width);
+  height: var(--box-depth);
+}
+
+.top {
+  background: linear-gradient(0deg, #2b2b30 0%, #38383e 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  transform: rotateX(90deg) translateZ(calc(var(--box-height) / 2));
+  transform-style: preserve-3d;
+}
+
+.bottom {
+  background: #0b0b0d;
+  transform: rotateX(-90deg) translateZ(calc(var(--box-height) / 2));
+}
+
+.left,
+.right {
+  top: 0;
+  left: calc((var(--box-width) - var(--box-depth)) / 2);
+  width: var(--box-depth);
+  height: var(--box-height);
+}
+
+.left {
+  background: linear-gradient(90deg, #17171a 0%, #1e1e22 100%);
+  transform: rotateY(-90deg) translateZ(calc(var(--box-width) / 2));
+  transform-style: preserve-3d;
+}
+
+.right {
+  background: #111114;
+  transform: rotateY(90deg) translateZ(calc(var(--box-width) / 2));
+}
+
+.floor-shadow {
+  position: absolute;
+  left: -6%;
+  top: calc((var(--box-height) - var(--box-depth) * 2) / 2);
+  width: 112%;
+  height: calc(var(--box-depth) * 2);
+  background: radial-gradient(closest-side, var(--floor-shadow), transparent);
+  filter: blur(calc(var(--led) * 3));
+  transform: rotateX(90deg) translateZ(calc(var(--box-height) / -2 - 1px));
+  pointer-events: none;
+}
+
+.button {
+  position: absolute;
+  right: 9%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+}
+
+.button .cylinder {
+  cursor: pointer;
+}
+
+.cylinder {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-style: preserve-3d;
+}
+
+.cylinder-wall,
+.cylinder-top {
+  position: absolute;
+}
+
+.cylinder-wall {
+  transform-origin: 50% 0;
+}
+
+.cylinder-top {
+  border-radius: 50%;
+}
+
+.collar .cylinder-top {
+  background: radial-gradient(circle at 40% 35%, #2e2e33, #0d0d0f 75%);
+}
+
+.cap .cylinder-top {
+  background: radial-gradient(circle at 38% 32%, #55555d 0%, #1c1c20 60%, #08080a 100%);
+}
+
+.port {
+  position: absolute;
+  left: 68%;
+  width: calc(var(--led) * 2.2);
+  height: calc(var(--led) * 2.2);
+  border-radius: 50%;
+  background: radial-gradient(circle, #050506 45%, #3a3a40 60%, #18181b 75%);
+}
+
+.port-upper {
+  top: 58%;
+}
+
+.port-lower {
+  top: 84%;
+}
+
+/* The plug's own position on the side face; its box is built in JS. */
+.plug {
+  position: absolute;
+  left: calc(68% + var(--led) * 1.1 - var(--led) * 1.8);
+  top: calc(71% - var(--led) * 1.3);
+  width: calc(var(--led) * 3.6);
+  height: calc(var(--led) * 2.6);
+  transform-style: preserve-3d;
+}
+
+.plug-side {
+  position: absolute;
+  background: linear-gradient(90deg, #c9c9cf, #f4f4f6);
+}
+
+.plug-side.end {
+  border-radius: calc(var(--led) * 0.6);
+  background: #e9e9ed;
+}
+
+.plug-side.upper {
+  background: linear-gradient(90deg, #dcdce1, #ffffff);
+}
+
+.plug-side.lower {
+  background: linear-gradient(90deg, #9d9da5, #c2c2c8);
+}
+
+.cable-anchor {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1px;
+  height: 1px;
+}
+
+/* Drawn flat over (or, when the plug faces away, under) the 3D scene, so
+   it can always trail off the edge of the window. */
+.cable {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  z-index: 2;
+}
+
+.cable.behind {
+  z-index: 0;
+}
+
+.cable-shade {
+  stroke: #b3b3ba;
+}
+
+.cable-body {
+  stroke: #e2e2e7;
+}
+
+.cable-highlight {
+  stroke: #ffffff;
+}
+
+.footer {
+  display: grid;
+  gap: 12px;
+  padding: 12px 16px 16px;
+}
+
+.stats {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 40px;
+}
+
+.controls h2 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-muted);
+}
+
+.controls dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 12px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.controls dt {
+  font-family: var(--mono);
+  color: var(--accent);
+}
+
+.controls dd {
+  margin: 0;
+  color: var(--ink-muted);
+}
+
+.controls code {
+  font-family: var(--mono);
+}
