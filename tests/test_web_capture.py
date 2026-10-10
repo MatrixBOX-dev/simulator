@@ -17,10 +17,10 @@ def lit_frame(width: int, height: int) -> wire.Frame:
     return wire.Frame(width=width, height=height, pixels=bytes(pixels))
 
 
-def capture(style: str, tmp_path: Path) -> Image.Image:
-    output = tmp_path / f"{style}.png"
+def capture(style: str, tmp_path: Path, theme: str = "dark") -> Image.Image:
+    output = tmp_path / f"{style}-{theme}.png"
     try:
-        WebCapture(lit_frame(64, 32), style, led_size=4).save(output)
+        WebCapture(lit_frame(64, 32), style, led_size=4, theme=theme).save(output)
     except SystemExit as exit_error:
         pytest.skip(f"no headless browser available: {exit_error}")
 
@@ -45,6 +45,15 @@ def test_device_style_crops_to_the_device(tmp_path: Path) -> None:
 
     assert 64 * 4 < width < (64 + 90) * 4
     assert 32 * 4 < height < (32 + 90) * 4
+
+
+def test_device_backdrop_follows_the_theme(tmp_path: Path) -> None:
+    dark = capture("device", tmp_path, theme="dark").convert("L")
+    light = capture("device", tmp_path, theme="light").convert("L")
+
+    corner = (2, 2, 3, 3)
+    assert dark.crop(corner).tobytes()[0] < 60
+    assert light.crop(corner).tobytes()[0] > 180
 
 
 def test_screenshot_defaults_to_raw_pixels() -> None:

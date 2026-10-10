@@ -701,18 +701,18 @@ class SimulatorPage {
     this.deviceScreen = document.getElementById("device-screen");
     this.connection = document.getElementById("connection");
     this.stats = document.getElementById("stats");
-    this.seamsToggle = document.getElementById("seams");
     this.viewButtons = document.querySelectorAll("[data-view]");
+    this.themeButtons = document.querySelectorAll("[data-theme-choice]");
     this.drawPending = false;
     this.lastFrameSize = "";
     const params = new URLSearchParams(window.location.search);
     this.view = params.get("view") ?? this.preferences.read("view", "panel");
+    this.setTheme(params.get("theme") ?? this.preferences.read("theme", "auto"), { remember: false });
     // Screenshot mode: just the panel or device at a fixed LED size, no
     // page chrome, flagging when it's safe to capture.
     this.capture = params.get("capture") === "1" ? { ledCssSize: Number(params.get("led")) || 8 } : null;
 
     this.renderer.showSeams = this.preferences.read("seams", "off") === "on";
-    this.seamsToggle.checked = this.renderer.showSeams;
     this.renderAppControls();
     this.bindControls();
     this.setView(this.view);
@@ -785,7 +785,10 @@ class SimulatorPage {
       button.addEventListener("click", () => this.setView(button.dataset.view));
     }
 
-    this.seamsToggle.addEventListener("change", () => this.setSeams(this.seamsToggle.checked));
+    for (const button of this.themeButtons) {
+      button.addEventListener("click", () => this.setTheme(button.dataset.themeChoice));
+    }
+
     window.addEventListener("resize", () => this.relayout());
     window.addEventListener("keydown", (event) => {
       if (event.metaKey || event.ctrlKey || event.altKey) {
@@ -822,9 +825,26 @@ class SimulatorPage {
     }
   }
 
+  // "auto" follows the OS; light or dark pins it regardless.
+  setTheme(theme, { remember = true } = {}) {
+    const choice = ["light", "dark"].includes(theme) ? theme : "auto";
+    if (choice === "auto") {
+      delete document.documentElement.dataset.theme;
+    } else {
+      document.documentElement.dataset.theme = choice;
+    }
+
+    for (const button of this.themeButtons) {
+      button.setAttribute("aria-pressed", String(button.dataset.themeChoice === choice));
+    }
+
+    if (remember) {
+      this.preferences.write("theme", choice);
+    }
+  }
+
   setSeams(enabled) {
     this.renderer.showSeams = enabled;
-    this.seamsToggle.checked = enabled;
     this.preferences.write("seams", enabled ? "on" : "off");
     this.scheduleDraw();
   }

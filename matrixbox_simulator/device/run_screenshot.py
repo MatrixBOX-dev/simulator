@@ -28,6 +28,7 @@ from matrixbox_simulator.device import frame_bridge, run_app
 from matrixbox_simulator.sizes import ROTATION_OVERRIDES, SIZE_PRESETS
 
 SCREENSHOT_STYLES = ("pixels", "panel", "device")
+SCREENSHOT_THEMES = ("dark", "light")
 
 
 def build_parser(
@@ -97,6 +98,13 @@ def build_parser(
         help="pixels: the raw frame, scaled up (default). panel: glowing "
         "LEDs in a dark housing, like the web renderer. device: the web "
         "renderer's 3D device mockup. panel and device need Playwright",
+    )
+    parser.add_argument(
+        "--theme",
+        choices=SCREENSHOT_THEMES,
+        default="dark",
+        help="page theme for --style device, the backdrop and cable color "
+        "(default dark)",
     )
     parser.add_argument(
         "-o",
@@ -237,7 +245,14 @@ def _write_screenshot(
 
 
 def _write_web_screenshot(
-    path: Path, width: int, height: int, rgb: bytes, *, style: str, scale: int
+    path: Path,
+    width: int,
+    height: int,
+    rgb: bytes,
+    *,
+    style: str,
+    scale: int,
+    theme: str,
 ) -> None:
     # A separate, unsandboxed process: this one has open()/stat() and
     # friends redirected into the app's sandbox, which a browser driver
@@ -257,6 +272,8 @@ def _write_web_screenshot(
             str(height),
             "--led-size",
             str(scale),
+            "--theme",
+            theme,
             "--output",
             str(path),
         ],
@@ -403,7 +420,13 @@ def run(args: argparse.Namespace) -> None:
         _write_screenshot(output, width, height, rgb, scale=args.scale)
     else:
         _write_web_screenshot(
-            output, width, height, rgb, style=args.style, scale=args.scale
+            output,
+            width,
+            height,
+            rgb,
+            style=args.style,
+            scale=args.scale,
+            theme=args.theme,
         )
 
     print(
