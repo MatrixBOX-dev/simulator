@@ -25,6 +25,7 @@ except ImportError:
     sync_playwright = None
 
 STYLES = ("panel", "device")
+THEMES = ("dark", "light")
 READY_TIMEOUT_MS = 15000
 
 # Room around the panel or device; the page crops to it anyway, this
@@ -33,10 +34,13 @@ _VIEWPORT_MARGIN_LEDS = {"panel": 16, "device": 90}
 
 
 class WebCapture:
-    def __init__(self, frame: wire.Frame, style: str, led_size: int) -> None:
+    def __init__(
+        self, frame: wire.Frame, style: str, led_size: int, theme: str = "dark"
+    ) -> None:
         self.frame = frame
         self.style = style
         self.led_size = led_size
+        self.theme = theme
 
     def save(self, output: Path) -> None:
         server = WebServer("127.0.0.1", 0)
@@ -81,9 +85,13 @@ class WebCapture:
             try:
                 width, height = self.viewport_size()
                 page = browser.new_page(
-                    viewport={"width": width, "height": height}, color_scheme="dark"
+                    viewport={"width": width, "height": height},
+                    color_scheme="light" if self.theme == "light" else "dark",
                 )
-                page.goto(f"{base_url}?view={self.style}&capture=1&led={self.led_size}")
+                page.goto(
+                    f"{base_url}?view={self.style}&theme={self.theme}"
+                    f"&capture=1&led={self.led_size}"
+                )
                 page.wait_for_selector("body[data-ready]", timeout=READY_TIMEOUT_MS)
                 clip = page.evaluate("window.matrixboxCaptureBounds()")
                 output.parent.mkdir(parents=True, exist_ok=True)
@@ -102,6 +110,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--width", type=int, required=True)
     parser.add_argument("--height", type=int, required=True)
     parser.add_argument("--led-size", type=int, default=8)
+    parser.add_argument("--theme", choices=THEMES, default="dark")
     parser.add_argument("-o", "--output", required=True)
 
     return parser
@@ -121,7 +130,7 @@ def main() -> None:
         pixels=rgb,
         tiles=panel_count_for(args.width, args.height),
     )
-    WebCapture(frame, args.style, args.led_size).save(Path(args.output))
+    WebCapture(frame, args.style, args.led_size, args.theme).save(Path(args.output))
 
 
 if __name__ == "__main__":

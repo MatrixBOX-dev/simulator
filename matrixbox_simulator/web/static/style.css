@@ -10,12 +10,21 @@
   --live: #2f9e5b;
   --offline: #b54848;
   --floor-shadow: rgba(0, 0, 0, 0.45);
+  --cable-shade: #b3b3ba;
+  --cable-body: #e2e2e7;
+  --cable-highlight: #ffffff;
+  --plug-end: #e9e9ed;
+  --plug-upper: linear-gradient(90deg, #dcdce1, #ffffff);
+  --plug-side: linear-gradient(90deg, #c9c9cf, #f4f4f6);
+  --plug-lower: linear-gradient(90deg, #9d9da5, #c2c2c8);
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
+/* Dark follows the OS unless the page's own theme toggle picked one;
+   the same tokens again for an explicit dark pick. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --page: #1d1d22;
     --page-edge: #0c0c0f;
     --ink: #e6e6ea;
@@ -23,7 +32,36 @@
     --chrome: rgba(30, 30, 36, 0.75);
     --chrome-border: rgba(255, 255, 255, 0.08);
     --floor-shadow: rgba(0, 0, 0, 0.8);
+    --cable-shade: #050506;
+    --cable-body: #1c1c20;
+    --cable-highlight: #45454c;
+    --plug-end: #26262b;
+    --plug-upper: linear-gradient(90deg, #2a2a30, #3c3c43);
+    --plug-side: linear-gradient(90deg, #17171a, #2a2a2f);
+    --plug-lower: linear-gradient(90deg, #0b0b0d, #17171a);
   }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #1d1d22;
+  --page-edge: #0c0c0f;
+  --ink: #e6e6ea;
+  --ink-muted: #8d8d98;
+  --chrome: rgba(30, 30, 36, 0.75);
+  --chrome-border: rgba(255, 255, 255, 0.08);
+  --floor-shadow: rgba(0, 0, 0, 0.8);
+  --cable-shade: #050506;
+  --cable-body: #1c1c20;
+  --cable-highlight: #45454c;
+  --plug-end: #26262b;
+  --plug-upper: linear-gradient(90deg, #2a2a30, #3c3c43);
+  --plug-side: linear-gradient(90deg, #17171a, #2a2a2f);
+  --plug-lower: linear-gradient(90deg, #0b0b0d, #17171a);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
 }
 
 * {
@@ -125,18 +163,6 @@ body.capture-panel {
 .segmented button[aria-pressed="true"] {
   background: var(--accent);
   color: #fff;
-}
-
-.switch {
-  display: inline-flex;
-  gap: 6px;
-  align-items: center;
-  color: var(--ink-muted);
-  cursor: pointer;
-}
-
-.switch input {
-  accent-color: var(--accent);
 }
 
 .stage {
@@ -360,20 +386,20 @@ body.capture-panel {
 
 .plug-side {
   position: absolute;
-  background: linear-gradient(90deg, #c9c9cf, #f4f4f6);
+  background: var(--plug-side);
 }
 
 .plug-side.end {
   border-radius: calc(var(--led) * 0.6);
-  background: #e9e9ed;
+  background: var(--plug-end);
 }
 
 .plug-side.upper {
-  background: linear-gradient(90deg, #dcdce1, #ffffff);
+  background: var(--plug-upper);
 }
 
 .plug-side.lower {
-  background: linear-gradient(90deg, #9d9da5, #c2c2c8);
+  background: var(--plug-lower);
 }
 
 .cable-anchor {
@@ -404,15 +430,15 @@ body.capture-panel {
 }
 
 .cable-shade {
-  stroke: #b3b3ba;
+  stroke: var(--cable-shade);
 }
 
 .cable-body {
-  stroke: #e2e2e7;
+  stroke: var(--cable-body);
 }
 
 .cable-highlight {
-  stroke: #ffffff;
+  stroke: var(--cable-highlight);
 }
 
 .footer {

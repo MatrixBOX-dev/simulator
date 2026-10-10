@@ -126,6 +126,9 @@ when an app only checks the button now and then.
 Only for the browser page itself:
 
 - `v`: switch between the flat panel and the device mockup.
+- Auto / Light / Dark in the toolbar: follow the OS theme, or pin one.
+  Remembered per browser, and `?theme=light` or `?theme=dark` in the
+  URL works too.
 - `t`: toggle a guide line at each panel seam (see "Panel sizes"). Off
   by default.
 - Drag the device to rotate it, double-click to reset the angle.
@@ -239,7 +242,9 @@ matrixbox screenshot /path/to/matrixbox/apps/clock --style device -o clock.png
 browser, so they need [Playwright][playwright]
 (`pip install 'matrixbox-simulator[screenshot]'`). An installed Chrome is
 used if there is one, otherwise run `playwright install chromium` once.
-For these, `--scale` is the size of one LED in pixels.
+For these, `--scale` is the size of one LED in pixels, and
+`--theme {dark,light}` picks the backdrop and cable color behind the
+device (default dark).
 
 ## Sandbox
 
