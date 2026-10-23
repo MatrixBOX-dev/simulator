@@ -33,7 +33,7 @@ from pathlib import Path
 from types import FrameType
 from typing import Any, NoReturn, TextIO
 
-from matrixbox_simulator.device import button_input, frame_bridge
+from matrixbox_simulator.device import button_input, frame_bridge, local_repo
 from matrixbox_simulator.sizes import (
     ROTATION_OVERRIDES,
     SIZE_CYCLE,
@@ -722,6 +722,7 @@ def _run_kernel(
     sys.path.insert(0, str(staged_root))
     sys.path.insert(0, str(staged_root / "lib"))
     sys.path.insert(0, str(STUB_DIR))
+    _install_local_repositories(framework_root, staged_root, args)
 
     def cycle_size() -> NoReturn:
         _cycle_size(staged_root / "settings.txt")
@@ -777,6 +778,72 @@ def _run_kernel(
             _exec_as_main(source, main_path)
         except KeyboardInterrupt:
             print("\nmatrixbox-simulator: stopped")
+
+
+def _wifi_connected() -> bool:
+    module = sys.modules.get("wifi")
+
+    return bool(getattr(getattr(module, "radio", None), "connected", True))
+
+
+def _install_local_repositories(
+    framework_root: Path, staged_root: Path, args: argparse.Namespace
+) -> None:
+    # Answers the Apps page's GitHub requests from local checkouts, so a
+    # change shows up in the store without pushing it first.
+    main_repository = None
+    if args.repo != "github":
+        main_root = (
+            framework_root if args.repo is None else Path(args.repo).expanduser()
+        )
+        if not main_root.is_dir():
+            raise SystemExit(f"--repo: no such directory: {main_root}")
+
+        main_repository = local_repo.LocalRepository(main_root)
+
+    mapped_repositories = {}
+    for key, path in args.repo_map:
+        if not path.is_dir():
+            raise SystemExit(f"--repo-map: no such directory: {path}")
+
+        mapped_repositories[key] = local_repo.LocalRepository(path)
+
+    if main_repository is None and not mapped_repositories:
+        return
+
+    settings_path = staged_root / "settings.txt"
+    interceptor = local_repo.GitHubInterceptor(
+        settings_path,
+        main_repository,
+        mapped_repositories,
+        _wifi_connected,
+    )
+
+    # Patching the class, before main.py creates its session, covers every
+    # session the device makes. It lives in the checkout, so only now importable.
+    import adafruit_requests  # ty: ignore[unresolved-import]
+
+    interceptor.install(adafruit_requests.Session)
+
+    if main_repository is not None:
+        identity = local_repo.repository_identity(interceptor.repository_url())
+        name = "/".join(identity) if identity else "the main repo"
+        print(
+            f"matrixbox-simulator: serving {name} from {main_repository.root} "
+            "(--repo github for real GitHub)"
+        )
+
+    for key, repository in mapped_repositories.items():
+        print(f"matrixbox-simulator: serving {key} from {repository.root}")
+
+
+def _repository_mapping(value: str) -> tuple[str, Path]:
+    name, _, path = value.partition("=")
+    owner, _, repo = name.partition("/")
+    if not (owner and repo and path) or "/" in repo:
+        raise argparse.ArgumentTypeError(f"expected OWNER/REPO=PATH, got {value!r}")
+
+    return local_repo.repository_key(owner, repo), Path(path).expanduser()
 
 
 # Set while stdin is in cbreak mode, so a SIGINT arriving mid-app can
@@ -935,6 +1002,27 @@ def build_parser(
             "boot with wifi already disconnected, to test an app's offline "
             "behavior from the first frame rather than toggling it live "
             "with 'n' after boot. Stays offline for the whole run"
+        ),
+    )
+    parser.add_argument(
+        "--repo",
+        default=None,
+        metavar="PATH|github",
+        help=(
+            "where the main repo's GitHub requests (store, system update) are "
+            "answered from: a local checkout, including uncommitted changes. "
+            "Defaults to the checkout being run. `github` uses real GitHub"
+        ),
+    )
+    parser.add_argument(
+        "--repo-map",
+        type=_repository_mapping,
+        action="append",
+        default=[],
+        metavar="OWNER/REPO=PATH",
+        help=(
+            "answer GitHub requests for another repo, such as a third-party "
+            "app, from a local directory. Repeatable"
         ),
     )
     return parser
