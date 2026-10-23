@@ -196,6 +196,33 @@ page's own Connect button fails outright rather than faking success,
 same as there being no real network for it to join), or toggle it live
 with `n`.
 
+## Testing the Apps page without pushing
+
+The Apps page (store, System update, third-party apps) reads its file
+list and files from GitHub. By default `matrixbox app` answers those
+requests from the checkout being run instead, so the store shows that
+checkout as if it were pushed: uncommitted edits and new untracked files
+are served, `.gitignore`d and deleted files are not. Which repo counts
+as "the checkout" follows `repository_url` in the device's settings.
+Every other request still goes to the real network, and all of them fail
+while wifi is off.
+
+```sh
+matrixbox app /path/to/matrixbox                     # store served from this checkout
+matrixbox app /path/to/matrixbox --repo github       # real GitHub
+matrixbox app /path/to/matrixbox --repo /path/to/matrixbox-feature
+```
+
+`--repo-map OWNER/REPO=PATH` does the same for any other GitHub repo, such
+as a third-party app you're working on. It can be given more than once:
+
+```sh
+matrixbox app /path/to/matrixbox --repo-map user/app=/path/to/app
+```
+
+The ref in a request is ignored: whatever branch the device asks for, it
+gets the working tree.
+
 ## Screenshots
 
 For CI, PR previews, or anywhere else a terminal isn't available:
