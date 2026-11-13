@@ -19,7 +19,7 @@ pip install matrixbox-simulator
 Or, as a tool with [uv][uv]:
 
 ```sh
-uv tool add matrixbox-simulator
+uv tool install matrixbox-simulator
 ```
 
 ## Requirements
